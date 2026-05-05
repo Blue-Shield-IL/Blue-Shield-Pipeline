@@ -1,2 +1,9 @@
 fastapi
 uvicorn
+elasticsearch>=9.0,<10
+python-dotenv
+
+# Testing
+pytest
+hypothesis
+httpx
