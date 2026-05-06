@@ -83,7 +83,6 @@ processing_service/
 │   ├── vectorize.py       Step 2 — embed posts
 │   ├── storage.py         Step 3 — Elasticsearch persistence
 │   └── runner.py          Orchestrator
-├── tests/
 ├── .env.example
 ├── pyproject.toml       Ruff + ty config
 └── requirements.txt
