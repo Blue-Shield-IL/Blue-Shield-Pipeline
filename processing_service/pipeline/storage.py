@@ -1,16 +1,15 @@
 """
-Elasticsearch storage layer for the Blue Shield pipeline.
+Step 3 of the pipeline: Elasticsearch storage.
 
-This is step 3 of the pipeline: given posts that have already been ingested
-(e.g. from Telegram) and vectorized, persist them to Elasticsearch so the
-API Server and dashboard can query them.
+Given posts that have already been ingested and vectorized, persist them to
+Elasticsearch so the API Server and dashboard can query them.
 
 Public surface — callers should depend only on these:
-    - `get_client()` / `close_client()`        lifecycle
-    - `ping()`                                  connectivity check
-    - `ensure_posts_index()`                    create-if-missing + mapping
-    - `store_post(post)`                        store one post
-    - `store_posts(posts)`                      store many posts (bulk)
+    - `get_client()` / `close_client()`     lifecycle
+    - `ping()`                               connectivity check
+    - `ensure_posts_index()`                 create-if-missing + mapping
+    - `store_post(post)`                     store one post
+    - `store_posts(posts)`                   store many posts (bulk)
 
 The index mapping includes a `dense_vector` field for the embedding produced
 by the vectorization stage, enabling semantic search from the API Server.

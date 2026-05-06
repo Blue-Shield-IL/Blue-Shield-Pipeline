@@ -1,27 +1,31 @@
 """
 FastAPI entrypoint for the Blue Shield Processing Service.
 
-The processing service is a scheduled worker that:
-  1. Ingests posts from external sources (e.g. Telegram, Reddit).
-  2. Filters, labels, and vectorizes them.
-  3. Stores the enriched posts in Elasticsearch (see `elastic.py`).
+The processing service is a worker that runs three steps end-to-end:
+  1. Ingest posts from external sources (Telegram, Reddit).
+  2. Filter, analyze, and vectorize them.
+  3. Store the enriched posts in Elasticsearch.
 
-The HTTP surface exposed here is intentionally minimal: health probes for
-ops, and the OpenAPI docs. Data ingress into Elasticsearch happens via the
-storage module (`elastic.store_post` / `elastic.store_posts`) called by the
-pipeline worker — the Node.js API Server is the public-facing HTTP layer.
+The HTTP surface exposed here is intentionally narrow:
+  - `/health*`        ops probes
+  - `/jobs/run`       trigger one pipeline run on demand
+
+The same `PipelineRunner` is used by the scheduled cron job, so cron and
+HTTP trigger the exact same code path.
 """
 
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
 
 from config import settings
-from elastic import close_client, ensure_posts_index, get_client, ping
+from pipeline import PipelineRunner
+from pipeline.storage import close_client, ensure_posts_index, get_client, ping
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,9 @@ app = FastAPI(
 )
 
 
+# --- Health ------------------------------------------------------------------
+
+
 @app.get("/")
 def read_root() -> dict[str, str]:
     return {
@@ -85,3 +92,52 @@ def elastic_health() -> dict[str, Any]:
             detail=f"Elasticsearch unreachable: {exc}",
         ) from exc
     return {"host": settings.host, "index": settings.posts_index, "cluster": dict(info)}
+
+
+# --- Jobs --------------------------------------------------------------------
+
+
+class RunJobRequest(BaseModel):
+    """Body for `POST /jobs/run`.
+
+    All fields are optional so the endpoint can be triggered with an empty
+    body for a "run with defaults" behaviour.
+    """
+
+    sources: Optional[list[str]] = Field(
+        default=None,
+        description="Sources to ingest from. Defaults to ['telegram', 'reddit'].",
+    )
+    limit_per_source: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=500,
+        description="Max posts to fetch per source. Defaults to 10.",
+    )
+
+
+@app.post("/jobs/run", status_code=status.HTTP_200_OK)
+def run_job(body: Optional[RunJobRequest] = None) -> dict[str, Any]:
+    """Run the full pipeline once: ingest → vectorize → store.
+
+    Returns per-stage counts plus any storage errors. Runs synchronously on
+    the current worker — fine for small batches; for larger runs the service
+    should queue the job instead (out of scope here).
+    """
+    req = body or RunJobRequest()
+    sources = req.sources or ["telegram", "reddit"]
+    limit = req.limit_per_source or 10
+
+    try:
+        runner = PipelineRunner(sources=sources, limit_per_source=limit)
+        result = runner.run()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Pipeline job failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Pipeline job failed: {exc}",
+        ) from exc
+
+    return result.as_dict()

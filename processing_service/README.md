@@ -2,19 +2,20 @@
 
 FastAPI-based Python worker that runs the Blue Shield data pipeline end-to-end:
 
-1. **Ingest** posts from external sources (Telegram, Reddit, etc.)
-2. **Analyze + vectorize** the posts (filtering, labeling, embedding)
+1. **Ingest** posts from external sources (Telegram, Reddit, ...)
+2. **Analyze + vectorize** each post (filtering, labeling, embedding)
 3. **Store** the enriched posts in Elasticsearch for the API Server to query
 
-The Node.js API Server is the public-facing HTTP layer. This service's HTTP surface is intentionally minimal — just health probes and OpenAPI docs.
+The Node.js API Server is the public-facing HTTP layer. This service's HTTP surface is intentionally minimal — health probes plus a single job-trigger endpoint.
 
 ---
 
 ## Tech Stack
-* Framework: FastAPI (for health endpoints + lifespan)
-* Storage: Elasticsearch 9.x (posts with dense-vector embeddings)
-* Language: Python 3.10+
-* Environment Management: venv
+
+- Framework: FastAPI (health endpoints + job trigger + lifespan)
+- Storage: Elasticsearch 9.x (posts with dense-vector embeddings)
+- Language: Python 3.10+
+- Environment Management: venv
 
 ---
 
@@ -57,26 +58,89 @@ Copy `.env.example` to `.env` and fill in the Elasticsearch credentials. The tea
 
 ---
 
-## Storage Module API
-
-The storage layer lives in `elastic.py` and is the public interface for step 3 of the pipeline. Typical usage from the ingestion/vectorization worker:
-
-```python
-from elastic import ensure_posts_index, store_post, store_posts
-from models import Post
-
-ensure_posts_index()                # idempotent, run once at startup
-
-store_post(post)                    # single-post write
-success, errors = store_posts(posts)  # bulk write
+## Running the Service
+```bash
+uvicorn main:app --reload
 ```
 
-- **`ensure_posts_index(index=None, embedding_dims=None)`** — creates the index with the expected mapping (including `dense_vector` for `embedding`) if it doesn't exist. No-op otherwise.
-- **`store_post(post, *, index=None, refresh=False)`** — indexes one `Post`, keyed by `post_id` for idempotent re-runs.
-- **`store_posts(posts, *, index=None, refresh=False) -> (success_count, errors)`** — bulk-indexes an iterable of posts via the `_bulk` API.
-- **`ping()`**, **`get_client()`**, **`close_client()`** — lifecycle helpers.
+On startup the service pings Elasticsearch and creates the `posts` index if it does not yet exist.
 
-See `examples/store_posts_example.py` for a runnable end-to-end demo (with fake ingestion + vectorization) you can use as a template.
+### Endpoints
+
+| Method | Path                | Description                                                                 |
+|--------|---------------------|-----------------------------------------------------------------------------|
+| GET    | `/`                 | Service root.                                                               |
+| GET    | `/health`           | Basic app health.                                                           |
+| GET    | `/health/elastic`   | Elasticsearch cluster health (503 if unreachable).                          |
+| POST   | `/jobs/run`         | Run the full pipeline once (ingest → vectorize → store).                    |
+
+Swagger UI: http://127.0.0.1:8000/docs
+
+### `POST /jobs/run`
+
+Request body (all fields optional — defaults run all known sources with a small limit):
+
+```json
+{
+  "sources": ["telegram", "reddit"],
+  "limit_per_source": 10
+}
+```
+
+Response:
+
+```json
+{
+  "job_id": "…uuid…",
+  "started_at": "2026-05-05T20:30:00+00:00",
+  "finished_at": "2026-05-05T20:30:01.182000+00:00",
+  "duration_seconds": 1.18,
+  "sources": ["telegram", "reddit"],
+  "ingested": 20,
+  "vectorized": 20,
+  "stored": 20,
+  "errors": []
+}
+```
+
+The same `PipelineRunner` is used by the scheduled cron job, so cron and HTTP trigger the exact same code path.
+
+---
+
+## Project Structure
+
+```
+processing_service/
+├── main.py                 FastAPI app: health + /jobs/run + lifespan
+├── config.py               Environment-driven settings
+├── models.py               Shared Pydantic schemas (`Post`)
+├── pipeline/               The three pipeline steps + orchestrator
+│   ├── __init__.py
+│   ├── ingest.py             Step 1 — source fetchers
+│   ├── vectorize.py          Step 2 — filter / label / embed
+│   ├── storage.py            Step 3 — Elasticsearch persistence
+│   └── runner.py             Orchestrator used by cron and /jobs/run
+├── examples/
+│   └── run_pipeline_example.py
+├── tests/
+├── .env.example
+├── requirements.txt
+└── README.md
+```
+
+The pipeline surface a caller needs is just:
+
+```python
+from pipeline import PipelineRunner
+
+result = PipelineRunner(sources=["telegram"], limit_per_source=50).run()
+```
+
+And for direct storage use (e.g. from an ad-hoc script):
+
+```python
+from pipeline.storage import ensure_posts_index, store_posts
+```
 
 ---
 
@@ -97,32 +161,3 @@ The `Post` Pydantic model in `models.py` defines what goes into Elasticsearch:
 | `language`       | `str`             | no       |                                        |
 | `keywords`       | `list[str]`       | no       |                                        |
 | `embedding`      | `list[float]`     | no       | Dense vector from the vectorization stage. |
-
----
-
-## Running the Health Server (optional)
-```bash
-uvicorn main:app --reload
-```
-
-On startup, the service pings Elasticsearch and creates the `posts` index with the expected mapping if it does not yet exist.
-
-| Method | Path                | Description                                           |
-|--------|---------------------|-------------------------------------------------------|
-| GET    | `/`                 | Service root.                                         |
-| GET    | `/health`           | Basic app health.                                     |
-| GET    | `/health/elastic`   | Elasticsearch cluster health (503 if unreachable).    |
-
-Swagger UI: http://127.0.0.1:8000/docs
-
----
-
-## Project Structure
-* `main.py` — FastAPI app with health endpoints and ES bootstrap on startup.
-* `config.py` — Environment-driven settings.
-* `elastic.py` — Elasticsearch storage module (step 3 of the pipeline).
-* `models.py` — `Post` Pydantic schema.
-* `examples/store_posts_example.py` — End-to-end pipeline demo with faked ingestion/vectorization.
-* `requirements.txt` — Project dependencies.
-* `.env.example` — Template for local environment configuration.
-* `tests/` — Pytest + Hypothesis test suite.
