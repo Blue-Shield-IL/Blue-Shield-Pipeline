@@ -1,6 +1,9 @@
 {
-  // Python interpreter — use the venv inside processing_service so VS Code
-  // resolves `dotenv`, `elasticsearch`, `fastapi`, etc. correctly.
+  // Python interpreter — use the venv inside processing_service.
+  // The Python extension auto-detects venvs in the workspace, but this hint
+  // speeds up first-open. Works on Windows; on macOS/Linux the equivalent is
+  // "processing_service/venv/bin/python". If it doesn't resolve, the extension
+  // falls back to auto-detection.
   "python.defaultInterpreterPath": "${workspaceFolder}/processing_service/venv/Scripts/python.exe",
 
   // Activate the venv automatically in new integrated terminals.

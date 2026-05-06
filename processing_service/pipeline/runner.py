@@ -27,6 +27,7 @@ class JobResult:
     sources: list[str]
     ingested: int = 0
     vectorized: int = 0
+    vectorize_failures: int = 0
     stored: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
 
@@ -69,7 +70,7 @@ class PipelineRunner:
         raw = ingest(self.sources, self.limit_per_source)
 
         # Step 2
-        enriched = vectorize(raw)
+        enriched, vectorize_failures = vectorize(raw)
 
         # Step 3
         stored = 0
@@ -86,6 +87,7 @@ class PipelineRunner:
             sources=self.sources,
             ingested=len(raw),
             vectorized=len(enriched),
+            vectorize_failures=vectorize_failures,
             stored=stored,
             errors=errors,
         )

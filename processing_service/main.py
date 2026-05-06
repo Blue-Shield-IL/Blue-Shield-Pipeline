@@ -66,7 +66,7 @@ def elastic_health() -> dict[str, Any]:
         logger.warning("Elasticsearch health check failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Elasticsearch unreachable: {exc}",
+            detail="Elasticsearch unreachable",
         ) from exc
     return {"host": settings.host, "index": settings.posts_index, "cluster": info.body}
 

@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from typing import Any
 
 from elasticsearch import Elasticsearch, helpers
-from elasticsearch.exceptions import TransportError
 
 from config import Settings, settings
 from models import Post
@@ -100,7 +99,7 @@ def ping() -> bool:
     try:
         get_client().cluster.health()
         return True
-    except TransportError as exc:
+    except Exception as exc:
         logger.warning("Elasticsearch ping failed: %s", exc)
         return False
 
