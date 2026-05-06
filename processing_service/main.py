@@ -99,7 +99,7 @@ def run_job(body: RunJobRequest | None = None) -> dict[str, Any]:
         logger.exception("Pipeline job failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Pipeline job failed: {exc}",
+            detail="Pipeline job failed. Check server logs for details.",
         ) from exc
 
     return result.as_dict()

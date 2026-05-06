@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import types
 import warnings
 from collections.abc import Iterable
-from typing import Any
+from datetime import datetime
+from typing import Any, Union, get_args, get_origin
 
 from elasticsearch import Elasticsearch, helpers
 
@@ -13,44 +15,59 @@ from models import Post
 logger = logging.getLogger(__name__)
 
 
-# Maps Python/Pydantic types to Elasticsearch field types.
-# When the schema mission adds fields to Post, this handles the mapping automatically.
-_TYPE_MAP: dict[str, dict[str, Any] | None] = {
-    "str": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 8192}}},
-    "int": {"type": "long"},
-    "float": {"type": "double"},
-    "datetime": {"type": "date"},
-    "list[str]": {"type": "keyword"},
-    "list[float]": None,  # handled specially as dense_vector
-}
-
 # Fields that should be mapped as `keyword` (exact match) instead of `text` (analyzed).
 _KEYWORD_FIELDS = {"post_id", "author", "platform", "language", "url"}
 
 
+def _unwrap_optional(annotation: Any) -> Any:
+    origin = get_origin(annotation)
+    if origin is Union or origin is types.UnionType:
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        return args[0] if len(args) == 1 else annotation
+
+    return annotation
+
+
+def _annotation_to_es(name: str, annotation: Any, embedding_dims: int) -> dict[str, Any]:
+    inner = _unwrap_optional(annotation)
+    origin = get_origin(inner)
+
+    # list[float] → dense_vector
+    if origin is list and get_args(inner) == (float,):
+        return {
+            "type": "dense_vector",
+            "dims": embedding_dims,
+            "index": True,
+            "similarity": "cosine",
+        }
+
+    # list[str] → keyword (multi-value)
+    if origin is list and get_args(inner) == (str,):
+        return {"type": "keyword"}
+
+    # Keyword override for specific fields
+    if name in _KEYWORD_FIELDS:
+        return {"type": "keyword"}
+
+    # Scalar types
+    if inner is str:
+        return {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 8192}}}
+    if inner is int:
+        return {"type": "long"}
+    if inner is float:
+        return {"type": "double"}
+    if inner is datetime:
+        return {"type": "date"}
+
+    # Fallback
+    return {"type": "keyword"}
+
+
 def _build_mapping(embedding_dims: int) -> dict[str, Any]:
+    """Derive ES mapping from the Post model fields."""
     properties: dict[str, Any] = {}
-
     for name, field_info in Post.model_fields.items():
-        annotation = str(field_info.annotation).replace("typing.Optional[", "").rstrip("]")
-        annotation = annotation.split(" | ")[0] if " | " in annotation else annotation
-
-        # Dense vector gets special treatment
-        if annotation == "list[float]":
-            properties[name] = {
-                "type": "dense_vector",
-                "dims": embedding_dims,
-                "index": True,
-                "similarity": "cosine",
-            }
-        elif name in _KEYWORD_FIELDS:
-            properties[name] = {"type": "keyword"}
-        elif annotation in _TYPE_MAP and _TYPE_MAP[annotation] is not None:
-            properties[name] = _TYPE_MAP[annotation]
-        else:
-            # Fallback: keyword for unknown types
-            properties[name] = {"type": "keyword"}
-
+        properties[name] = _annotation_to_es(name, field_info.annotation, embedding_dims)
     return {"mappings": {"properties": properties}}
 
 
@@ -107,12 +124,14 @@ def ping() -> bool:
 def ensure_posts_index(index: str | None = None) -> bool:
     client = get_client()
     target = index or settings.posts_index
-    if client.indices.exists(index=target):
-        return False
-    client.indices.create(index=target, **_build_mapping(settings.embedding_dims))
-    logger.info("Created index %r", target)
-
-    return True
+    try:
+        client.indices.create(index=target, **_build_mapping(settings.embedding_dims))
+        logger.info("Created index %r", target)
+        return True
+    except Exception as exc:
+        if "resource_already_exists_exception" in str(exc):
+            return False
+        raise
 
 
 def store_post(post: Post, *, index: str | None = None, refresh: bool = False) -> dict[str, Any]:
