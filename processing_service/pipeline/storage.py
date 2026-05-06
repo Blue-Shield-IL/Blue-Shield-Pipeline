@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from elasticsearch import Elasticsearch, helpers
 from elasticsearch.exceptions import TransportError
@@ -67,7 +68,7 @@ def _build_mapping(embedding_dims: int) -> dict[str, Any]:
 POSTS_INDEX_MAPPING: dict[str, Any] = _build_mapping(settings.embedding_dims)
 
 
-_client: Optional[Elasticsearch] = None
+_client: Elasticsearch | None = None
 
 
 def _build_client(cfg: ElasticsearchSettings) -> Elasticsearch:
@@ -128,8 +129,8 @@ def ping() -> bool:
 
 
 def ensure_posts_index(
-    index: Optional[str] = None,
-    embedding_dims: Optional[int] = None,
+    index: str | None = None,
+    embedding_dims: int | None = None,
 ) -> bool:
     """Create the posts index with the expected mapping if it doesn't exist.
 
@@ -165,7 +166,7 @@ def _post_to_doc(post: Post) -> dict[str, Any]:
 def store_post(
     post: Post,
     *,
-    index: Optional[str] = None,
+    index: str | None = None,
     refresh: bool = False,
 ) -> dict[str, Any]:
     """Store a single post in Elasticsearch, keyed by `post_id` for idempotency.
@@ -187,7 +188,7 @@ def store_post(
 def store_posts(
     posts: Iterable[Post],
     *,
-    index: Optional[str] = None,
+    index: str | None = None,
     refresh: bool = False,
 ) -> tuple[int, list[dict[str, Any]]]:
     """Store many posts in a single bulk request.

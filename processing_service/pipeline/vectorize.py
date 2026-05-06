@@ -73,8 +73,6 @@ def vectorize(raw_posts: list[RawPost]) -> list[Post]:
         try:
             enriched.append(Post(**data))
         except Exception:
-            logger.exception(
-                "Vectorization failed for post %r; skipping", data.get("post_id")
-            )
+            logger.exception("Vectorization failed for post %r; skipping", data.get("post_id"))
     logger.info("Vectorized %d/%d posts (dims=%d)", len(enriched), len(raw_posts), dims)
     return enriched

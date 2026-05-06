@@ -31,8 +31,8 @@ class JobResult:
     """Result of one pipeline run, safe to serialize to JSON."""
 
     job_id: str
-    started_at: str                 # ISO 8601 UTC
-    finished_at: str                # ISO 8601 UTC
+    started_at: str  # ISO 8601 UTC
+    finished_at: str  # ISO 8601 UTC
     duration_seconds: float
     sources: list[str]
     ingested: int = 0

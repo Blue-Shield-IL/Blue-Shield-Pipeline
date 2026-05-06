@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
@@ -104,11 +104,11 @@ class RunJobRequest(BaseModel):
     body for a "run with defaults" behaviour.
     """
 
-    sources: Optional[list[str]] = Field(
+    sources: list[str] | None = Field(
         default=None,
         description="Sources to ingest from. Defaults to ['telegram', 'reddit'].",
     )
-    limit_per_source: Optional[int] = Field(
+    limit_per_source: int | None = Field(
         default=None,
         ge=1,
         le=500,
@@ -117,7 +117,7 @@ class RunJobRequest(BaseModel):
 
 
 @app.post("/jobs/run", status_code=status.HTTP_200_OK)
-def run_job(body: Optional[RunJobRequest] = None) -> dict[str, Any]:
+def run_job(body: RunJobRequest | None = None) -> dict[str, Any]:
     """Run the full pipeline once: ingest → vectorize → store.
 
     Returns per-stage counts plus any storage errors. Runs synchronously on

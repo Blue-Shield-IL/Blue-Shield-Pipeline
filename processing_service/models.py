@@ -9,7 +9,6 @@ and handed to the storage layer for indexing into Elasticsearch.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,14 +36,14 @@ class Post(BaseModel):
 
     # Free-form metadata.
     hashtags: list[str] = Field(default_factory=list)
-    url: Optional[str] = None
-    language: Optional[str] = None
+    url: str | None = None
+    language: str | None = None
     keywords: list[str] = Field(default_factory=list)
 
     # Vector produced by the upstream vectorization stage. Optional so the
     # schema can represent a post before it has been embedded (e.g. for debug
     # dumps), but the storage layer expects this to be populated in production.
-    embedding: Optional[list[float]] = Field(
+    embedding: list[float] | None = Field(
         default=None,
         description="Dense vector embedding produced by the vectorization stage.",
     )

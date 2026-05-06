@@ -1,0 +1,29 @@
+# Tool configuration for the Processing Service.
+#
+# The source of truth for runtime deps stays `requirements.txt`; this file
+# exists to point tooling (ty type checker, ruff formatter) at the local venv
+# and the code layout.
+
+[tool.ty.environment]
+# Tell ty to resolve imports against the in-project venv rather than the
+# system Python. Without this, editor diagnostics flag any third-party
+# import as "unresolved".
+python = "./venv"
+
+[tool.ty.src]
+# Treat this folder as the first-party root so `from config import ...`
+# resolves correctly.
+root = "."
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Pycodestyle errors/warnings, pyflakes, isort, pyupgrade, bugbear.
+select = ["E", "W", "F", "I", "UP", "B"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

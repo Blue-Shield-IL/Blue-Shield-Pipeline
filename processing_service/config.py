@@ -1,16 +1,7 @@
-"""
-Configuration for the Blue Shield Processing Service.
-
-All runtime settings are loaded from environment variables, with sensible
-defaults for local development. Secrets (Elasticsearch password, etc.) must
-never be hard-coded; put them in a local .env file that is git-ignored.
-"""
-
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -40,7 +31,7 @@ class ElasticsearchSettings:
     # and no CA bundle is available. Prefer providing ca_certs in production.
     verify_certs: bool
     # Optional path to a CA certificate bundle used to verify the ES cert.
-    ca_certs: Optional[str]
+    ca_certs: str | None
     # Client-side timeouts (seconds).
     request_timeout: float
     # Dimension of the vector embedding stored alongside posts.
@@ -49,7 +40,7 @@ class ElasticsearchSettings:
     embedding_dims: int
 
     @classmethod
-    def from_env(cls) -> "ElasticsearchSettings":
+    def from_env(cls) -> ElasticsearchSettings:
         host = os.getenv("ELASTIC_HOST", "https://localhost:9200")
         username = os.getenv("ELASTIC_USERNAME", "elastic")
         password = os.getenv("ELASTIC_PASSWORD", "")
