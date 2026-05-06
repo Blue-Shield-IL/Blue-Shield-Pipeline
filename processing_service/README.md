@@ -6,7 +6,7 @@ FastAPI-based Python worker that runs the Blue Shield data pipeline end-to-end:
 2. **Analyze + vectorize** each post (filtering, labeling, embedding)
 3. **Store** the enriched posts in Elasticsearch for the API Server to query
 
-The Node.js API Server is the public-facing HTTP layer. This service's HTTP surface is intentionally minimal — health probes plus a single job-trigger endpoint.
+This service's HTTP surface is intentionally minimal — health probes plus a single job-trigger endpoint.
 
 ---
 
@@ -120,8 +120,6 @@ processing_service/
 │   ├── vectorize.py          Step 2 — filter / label / embed
 │   ├── storage.py            Step 3 — Elasticsearch persistence
 │   └── runner.py             Orchestrator used by cron and /jobs/run
-├── examples/
-│   └── run_pipeline_example.py
 ├── tests/
 ├── .env.example
 ├── requirements.txt
