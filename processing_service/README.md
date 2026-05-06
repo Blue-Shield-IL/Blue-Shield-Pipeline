@@ -1,54 +1,62 @@
 # Blue Shield - Processing Service
 
-This repository contains the **Processing Service** for the Blue Shield project. It is a FastAPI-based Python backend responsible for the end-to-end data pipeline, including ingestion, filtering, and analysis.
+A Producer-Consumer worker script for the Blue Shield data pipeline. It continuously retrieves batches of raw social posts from a Source API and runs them through local Hugging Face models to filter and extract insights.
 
----
+**Note: This service runs entirely locally on your hardware. No external APIs (like OpenAI or Google AI) are used.**
 
-## Tech Stack
-* Framework: FastAPI
-* Server: Uvicorn
-* Language: Python 3.10+
-* Environment Management: venv
+## Folder Structure
 
----
+- `main.py`: The worker script that runs the infinite fetch-process loop.
+- `models/`: Pydantic schemas (`Post` and `ProcessedPost`) for data validation.
+- `services/ml_services.py`: The local NLP pipeline (Binary Filtering, Sentiment, Zero-shot IHRA classification, NER, and Dense Vectorization).
+- `services/pipeline_service.py`: End-to-end orchestration of the ML steps.
+- `tests/`: Pytest suite verifying the pipeline and ML functions.
+- `requirements.txt`: Python dependencies.
 
 ## Getting Started
 
-###  Navigate to Directory
+1. Work from the project root (one level above `processing_service/`):
+
 ```bash
-cd processing_service
+cd Blue-Shield-Pipeline
+```
 
----
+2. Create and activate a virtual environment:
 
- ###Setup Virtual Environment
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate        # Windows
+source .venv/bin/activate       # Mac / Linux
+```
 
-# Create the environment
-python -m venv venv
+3. Install dependencies:
 
-# Activate (Windows)
-.\venv\Scripts\activate
+```bash
+pip install -r processing_service/requirements.txt
+```
 
-# Activate (Mac/Linux)
-source venv/bin/activate
+4. Configure your `.env` file (Optional):
 
-### Install Dependencies 
-pip install -r requirements.txt
+Key variables:
+- `FILTER_MODEL_NAME` — default `distilbert-base-uncased-finetuned-sst-2-english`
 
----
+5. Run the Worker **from the project root** (so Python resolves the `processing_service.*` package):
 
-## Running the Server
-uvicorn main:app --reload
+```bash
+python processing_service/main.py
+```
+*Note: Ensure the `SOURCE_API_URL` inside `main.py` is pointed to your actual data source.*
 
----
+6. Run Tests:
 
-## API Documentation
-Once the server is running, you can access the interactive API documentation (Swagger UI):
-* Swagger UI: http://127.0.0.1:8000/docs
-* ReDoc: http://127.0.0.1:8000/redoc
+```bash
+python -m pytest processing_service/tests/ -v
+```
 
----
-
-## Project Structure
-* main.py - Application entry point and route definitions.
-* requirements.txt - Project dependencies.
-* .gitignore - Prevents unnecessary files (like venv/) from being committed.
+## Local Models Used
+The pipeline downloads and executes the following models locally via the `transformers` and `sentence-transformers` libraries:
+- **Filtering:** `distilbert-base-uncased-finetuned-sst-2-english`
+- **Sentiment:** `cardiffnlp/twitter-roberta-base-sentiment`
+- **Analysis:** `facebook/bart-large-mnli`
+- **NER (Country extraction):** `dbmdz/bert-large-cased-finetuned-conll03-english`
+- **Vectorization:** `all-MiniLM-L6-v2`
