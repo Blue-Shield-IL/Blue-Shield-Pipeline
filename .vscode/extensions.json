@@ -1,0 +1,9 @@
+{
+  // Extensions the team should have for this workspace. VS Code surfaces a
+  // "Recommended extensions" prompt the first time the workspace is opened.
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "astral-sh.ty"
+  ]
+}

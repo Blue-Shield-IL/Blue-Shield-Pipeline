@@ -1,19 +1,3 @@
-"""
-FastAPI entrypoint for the Blue Shield Processing Service.
-
-The processing service is a worker that runs three steps end-to-end:
-  1. Ingest posts from external sources (Telegram, Reddit).
-  2. Filter, analyze, and vectorize them.
-  3. Store the enriched posts in Elasticsearch.
-
-The HTTP surface exposed here is intentionally narrow:
-  - `/health*`        ops probes
-  - `/jobs/run`       trigger one pipeline run on demand
-
-The same `PipelineRunner` is used by the scheduled cron job, so cron and
-HTTP trigger the exact same code path.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -32,21 +16,19 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm up the Elasticsearch client and ensure the posts index exists."""
     try:
         if ping():
-            created = ensure_posts_index()
             logger.info(
                 "Elasticsearch reachable; posts index %r %s",
                 settings.posts_index,
-                "created" if created else "already exists",
+                "created" if ensure_posts_index() else "already exists",
             )
         else:
             logger.warning(
                 "Elasticsearch not reachable at %s on startup; continuing without index bootstrap.",
                 settings.host,
             )
-    except Exception:  # pragma: no cover - startup must not crash the app
+    except Exception:
         logger.exception("Elasticsearch bootstrap failed")
 
     yield
@@ -60,9 +42,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
-
-# --- Health ------------------------------------------------------------------
 
 
 @app.get("/")
@@ -81,52 +60,35 @@ def health_check() -> dict[str, str]:
 
 @app.get("/health/elastic")
 def elastic_health() -> dict[str, Any]:
-    """Return the Elasticsearch cluster health or a 503 if unreachable."""
-    client = get_client()
     try:
-        info = client.cluster.health()
+        info = get_client().cluster.health()
     except Exception as exc:
         logger.warning("Elasticsearch health check failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Elasticsearch unreachable: {exc}",
         ) from exc
-    return {"host": settings.host, "index": settings.posts_index, "cluster": dict(info)}
-
-
-# --- Jobs --------------------------------------------------------------------
+    return {"host": settings.host, "index": settings.posts_index, "cluster": info.body}
 
 
 class RunJobRequest(BaseModel):
-    """Body for `POST /jobs/run`.
-
-    All fields are optional so the endpoint can be triggered with an empty
-    body for a "run with defaults" behaviour.
-    """
-
-    sources: list[str] | None = Field(
-        default=None,
-        description="Sources to ingest from. Defaults to ['telegram', 'reddit'].",
+    sources: list[str] = Field(
+        default=["telegram"],
+        description="Sources to ingest from. Defaults to ['telegram'].",
     )
-    limit_per_source: int | None = Field(
-        default=None,
+    limit_per_source: int = Field(
+        default=10,
         ge=1,
         le=500,
         description="Max posts to fetch per source. Defaults to 10.",
     )
 
 
+# Run the full pipeline once: ingest → vectorize → store.
 @app.post("/jobs/run", status_code=status.HTTP_200_OK)
 def run_job(body: RunJobRequest | None = None) -> dict[str, Any]:
-    """Run the full pipeline once: ingest → vectorize → store.
-
-    Returns per-stage counts plus any storage errors. Runs synchronously on
-    the current worker — fine for small batches; for larger runs the service
-    should queue the job instead (out of scope here).
-    """
     req = body or RunJobRequest()
-    sources = req.sources or ["telegram", "reddit"]
-    limit = req.limit_per_source or 10
+    sources, limit = req.sources, req.limit_per_source
 
     try:
         runner = PipelineRunner(sources=sources, limit_per_source=limit)

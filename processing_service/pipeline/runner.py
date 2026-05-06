@@ -1,14 +1,4 @@
-"""
-Pipeline orchestrator.
-
-Runs the three steps end-to-end and reports per-stage stats. This is the
-single entry point used by:
-  - the scheduled cron job
-  - the `POST /jobs/run` HTTP endpoint
-
-Designed so the caller does not need to know which fetchers or models are
-wired behind each step — they just request a run.
-"""
+"""Pipeline orchestrator."""
 
 from __future__ import annotations
 
