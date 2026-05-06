@@ -1,14 +1,19 @@
 """
-Elasticsearch client and indexing helpers.
+Elasticsearch storage layer for the Blue Shield pipeline.
 
-This module encapsulates:
-- Construction of the Elasticsearch client from settings.
-- The index mapping for the `posts` index.
-- Create-if-missing logic for the index.
-- Insertion helpers for single and batch posts.
+This is step 3 of the pipeline: given posts that have already been ingested
+(e.g. from Telegram) and vectorized, persist them to Elasticsearch so the
+API Server and dashboard can query them.
 
-Callers should prefer `get_client()` so the client is lazily created and
-reused for the life of the process.
+Public surface — callers should depend only on these:
+    - `get_client()` / `close_client()`        lifecycle
+    - `ping()`                                  connectivity check
+    - `ensure_posts_index()`                    create-if-missing + mapping
+    - `store_post(post)`                        store one post
+    - `store_posts(posts)`                      store many posts (bulk)
+
+The index mapping includes a `dense_vector` field for the embedding produced
+by the vectorization stage, enabling semantic search from the API Server.
 """
 
 from __future__ import annotations
@@ -25,34 +30,42 @@ from models import Post
 
 logger = logging.getLogger(__name__)
 
-# Index mapping for the `posts` index. Mirrors the fields on `Post`.
-# `text` is analyzed for full-text search; keyword fields are for filtering/aggregations.
-POSTS_INDEX_MAPPING: dict[str, Any] = {
-    "mappings": {
-        "properties": {
-            "post_id": {"type": "keyword"},
-            "text_content": {
-                "type": "text",
-                "fields": {"keyword": {"type": "keyword", "ignore_above": 8192}},
-            },
-            "author": {"type": "keyword"},
-            "platform": {"type": "keyword"},
-            "created_at": {"type": "date"},
-            "likes": {"type": "long"},
-            "shares": {"type": "long"},
-            "comments_count": {"type": "long"},
-            "views": {"type": "long"},
-            "hashtags": {"type": "keyword"},
-            "url": {"type": "keyword"},
-            "language": {"type": "keyword"},
-            "keywords": {"type": "keyword"},
-            # `embedding` is reserved for the future vectorization stage.
-            # Dimension will be finalized once the embedding model is chosen.
-            # Uncomment and set `dims` to enable semantic search.
-            # "embedding": {"type": "dense_vector", "dims": 384, "index": True, "similarity": "cosine"},
+
+def _build_mapping(embedding_dims: int) -> dict[str, Any]:
+    """Build the posts-index mapping, parameterized by embedding dimension."""
+    return {
+        "mappings": {
+            "properties": {
+                "post_id": {"type": "keyword"},
+                "text_content": {
+                    "type": "text",
+                    "fields": {"keyword": {"type": "keyword", "ignore_above": 8192}},
+                },
+                "author": {"type": "keyword"},
+                "platform": {"type": "keyword"},
+                "created_at": {"type": "date"},
+                "likes": {"type": "long"},
+                "shares": {"type": "long"},
+                "comments_count": {"type": "long"},
+                "views": {"type": "long"},
+                "hashtags": {"type": "keyword"},
+                "url": {"type": "keyword"},
+                "language": {"type": "keyword"},
+                "keywords": {"type": "keyword"},
+                "embedding": {
+                    "type": "dense_vector",
+                    "dims": embedding_dims,
+                    "index": True,
+                    "similarity": "cosine",
+                },
+            }
         }
     }
-}
+
+
+# Pre-built default mapping using the dimensions from settings. Callers who need
+# a different dimension (e.g. in tests) can pass their own via `ensure_posts_index`.
+POSTS_INDEX_MAPPING: dict[str, Any] = _build_mapping(settings.embedding_dims)
 
 
 _client: Optional[Elasticsearch] = None
@@ -105,10 +118,9 @@ def close_client() -> None:
 
 
 def ping() -> bool:
-    """Return True if the cluster is reachable and responds to /_cluster/health."""
+    """Return True if the cluster is reachable."""
     client = get_client()
     try:
-        # `ping()` swallows exceptions and returns False; use health for clearer errors.
         client.cluster.health(request_timeout=settings.request_timeout)
         return True
     except TransportError as exc:
@@ -116,49 +128,73 @@ def ping() -> bool:
         return False
 
 
-def ensure_posts_index(index: Optional[str] = None) -> bool:
+def ensure_posts_index(
+    index: Optional[str] = None,
+    embedding_dims: Optional[int] = None,
+) -> bool:
     """Create the posts index with the expected mapping if it doesn't exist.
 
-    Returns True if the index was created during this call, False if it already existed.
+    Returns True if the index was created during this call, False if it already
+    existed. Does not modify the mapping of an existing index — changing
+    `embedding_dims` on an existing index requires a reindex.
     """
     client = get_client()
     target = index or settings.posts_index
     if client.indices.exists(index=target):
         return False
-    client.indices.create(index=target, **POSTS_INDEX_MAPPING)
-    logger.info("Created Elasticsearch index %r", target)
+
+    mapping = _build_mapping(embedding_dims or settings.embedding_dims)
+    client.indices.create(index=target, **mapping)
+    logger.info(
+        "Created Elasticsearch index %r (embedding_dims=%d)",
+        target,
+        embedding_dims or settings.embedding_dims,
+    )
     return True
 
 
 def _post_to_doc(post: Post) -> dict[str, Any]:
-    """Serialize a `Post` to a dict suitable for Elasticsearch indexing."""
-    # mode="json" converts datetime -> ISO 8601 string, which ES `date` type parses natively.
-    return post.model_dump(mode="json")
+    """Serialize a `Post` to a dict suitable for Elasticsearch indexing.
+
+    `exclude_none=True` keeps the document compact by skipping fields the
+    upstream stages haven't populated yet (e.g. a post without an embedding
+    during a pre-vectorization dry run).
+    """
+    return post.model_dump(mode="json", exclude_none=True)
 
 
-def index_post(post: Post, index: Optional[str] = None, refresh: bool = False) -> dict[str, Any]:
-    """Index a single post. Uses `post_id` as the document id for idempotency."""
+def store_post(
+    post: Post,
+    *,
+    index: Optional[str] = None,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Store a single post in Elasticsearch, keyed by `post_id` for idempotency.
+
+    Re-storing a post with the same `post_id` updates the existing document.
+    """
     client = get_client()
     target = index or settings.posts_index
-    doc = _post_to_doc(post)
-    response = client.index(
-        index=target,
-        id=post.post_id,
-        document=doc,
-        refresh="wait_for" if refresh else False,
+    return dict(
+        client.index(
+            index=target,
+            id=post.post_id,
+            document=_post_to_doc(post),
+            refresh="wait_for" if refresh else False,
+        )
     )
-    return dict(response)
 
 
-def bulk_index_posts(
+def store_posts(
     posts: Iterable[Post],
+    *,
     index: Optional[str] = None,
     refresh: bool = False,
 ) -> tuple[int, list[dict[str, Any]]]:
-    """Bulk-index a collection of posts.
+    """Store many posts in a single bulk request.
 
-    Returns (successful_count, errors) where errors is a list of per-document
-    failure payloads as returned by the _bulk API.
+    Returns (successful_count, errors). `errors` is a list of per-document
+    failure payloads as returned by the _bulk API; it is empty on full success.
     """
     client = get_client()
     target = index or settings.posts_index
@@ -173,7 +209,6 @@ def bulk_index_posts(
         for post in posts
     )
 
-    # `raise_on_error=False` lets us report partial failures instead of aborting the batch.
     success, errors = helpers.bulk(
         client,
         actions,
@@ -181,5 +216,4 @@ def bulk_index_posts(
         raise_on_error=False,
         raise_on_exception=False,
     )
-    # `errors` from helpers.bulk with raise_on_error=False is a list[dict].
     return success, list(errors)  # type: ignore[arg-type]

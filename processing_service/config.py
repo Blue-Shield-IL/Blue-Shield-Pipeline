@@ -43,6 +43,10 @@ class ElasticsearchSettings:
     ca_certs: Optional[str]
     # Client-side timeouts (seconds).
     request_timeout: float
+    # Dimension of the vector embedding stored alongside posts.
+    # Must match the output dimension of the embedding model chosen upstream
+    # (e.g. 384 for all-MiniLM-L6-v2, 768 for many BERT variants).
+    embedding_dims: int
 
     @classmethod
     def from_env(cls) -> "ElasticsearchSettings":
@@ -53,6 +57,7 @@ class ElasticsearchSettings:
         verify_certs = _get_bool("ELASTIC_VERIFY_CERTS", False)
         ca_certs = os.getenv("ELASTIC_CA_CERTS") or None
         request_timeout = float(os.getenv("ELASTIC_REQUEST_TIMEOUT", "30"))
+        embedding_dims = int(os.getenv("ELASTIC_EMBEDDING_DIMS", "384"))
 
         return cls(
             host=host,
@@ -62,6 +67,7 @@ class ElasticsearchSettings:
             verify_certs=verify_certs,
             ca_certs=ca_certs,
             request_timeout=request_timeout,
+            embedding_dims=embedding_dims,
         )
 
 
