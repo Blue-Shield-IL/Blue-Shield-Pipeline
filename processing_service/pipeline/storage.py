@@ -10,13 +10,21 @@ from typing import Any, Union, get_args, get_origin
 from elasticsearch import Elasticsearch, helpers
 
 from config import Settings, settings
-from models import Post
+from models import Post, ProcessedPost
 
 logger = logging.getLogger(__name__)
 
 
 # Fields that should be mapped as `keyword` (exact match) instead of `text` (analyzed).
-_KEYWORD_FIELDS = {"post_id", "author", "platform", "language", "url"}
+_KEYWORD_FIELDS = {
+    "post_id",
+    "author",
+    "platform",
+    "language",
+    "url",
+    "sentiment",
+    "country_of_origin",
+}
 
 
 def _unwrap_optional(annotation: Any) -> Any:
@@ -64,9 +72,9 @@ def _annotation_to_es(name: str, annotation: Any, embedding_dims: int) -> dict[s
 
 
 def _build_mapping(embedding_dims: int) -> dict[str, Any]:
-    """Derive ES mapping from the Post model fields."""
+    """Derive ES mapping from the ProcessedPost model fields."""
     properties: dict[str, Any] = {}
-    for name, field_info in Post.model_fields.items():
+    for name, field_info in ProcessedPost.model_fields.items():
         properties[name] = _annotation_to_es(name, field_info.annotation, embedding_dims)
     return {"mappings": {"properties": properties}}
 
