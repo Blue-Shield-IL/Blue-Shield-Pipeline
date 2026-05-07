@@ -59,7 +59,8 @@ def get_text_classifier() -> Any:
 def get_sentence_model() -> SentenceTransformer:
     global SENTENCE_MODEL
     if SENTENCE_MODEL is None:
-        SENTENCE_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+        model_name = os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
+        SENTENCE_MODEL = SentenceTransformer(model_name)
     return SENTENCE_MODEL
 
 
