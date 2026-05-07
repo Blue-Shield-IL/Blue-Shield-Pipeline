@@ -1,0 +1,44 @@
+{
+  // Python interpreter — use the venv inside processing_service.
+  // The Python extension auto-detects venvs in the workspace, but this hint
+  // speeds up first-open. Works on Windows; on macOS/Linux the equivalent is
+  // "processing_service/venv/bin/python". If it doesn't resolve, the extension
+  // falls back to auto-detection.
+  "python.defaultInterpreterPath": "${workspaceFolder}/processing_service/venv/Scripts/python.exe",
+
+  // Activate the venv automatically in new integrated terminals.
+  "python.terminal.activateEnvironment": true,
+
+  // Ruff is our formatter + linter (we installed it in the venv and it's in
+  // requirements.txt). Override the global black setting for this workspace.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+
+  // Let Ruff pick up `processing_service/pyproject.toml` automatically.
+  "ruff.enable": true,
+  "ruff.importStrategy": "fromEnvironment",
+
+  // Pytest integration — our tests live under processing_service/tests/.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["processing_service"],
+
+  // Indentation — 4 spaces everywhere.
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+
+  // Hide caches that are already git-ignored so they don't clutter the tree.
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.hypothesis": true,
+    "**/*.pyc": true
+  }
+}
