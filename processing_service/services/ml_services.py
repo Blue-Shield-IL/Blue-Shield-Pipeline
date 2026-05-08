@@ -56,7 +56,7 @@ def get_text_classifier() -> Any:
         model_name = os.getenv(
             "FILTER_MODEL_NAME", "distilbert-base-uncased-finetuned-sst-2-english"
         )
-        TEXT_CLASSIFIER = pipeline("text-classification", model=model_name)
+        TEXT_CLASSIFIER = pipeline("text-classification", model=model_name, device=HF_DEVICE)
     return TEXT_CLASSIFIER
 
 
@@ -66,6 +66,15 @@ def get_sentence_model() -> SentenceTransformer:
         model_name = os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
         SENTENCE_MODEL = SentenceTransformer(model_name)
     return SENTENCE_MODEL
+
+
+def get_embedding_dims() -> int:
+    """Return the embedding dimension produced by the sentence model.
+
+    Used by the storage layer to size the ES dense_vector field so the
+    mapping always matches what `vectorize_text` actually produces.
+    """
+    return int(get_sentence_model().get_sentence_embedding_dimension())
 
 
 def get_sentiment_classifier() -> Any:

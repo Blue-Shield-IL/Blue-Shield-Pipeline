@@ -129,11 +129,31 @@ def ping() -> bool:
         return False
 
 
+def _resolve_embedding_dims() -> int:
+    """Get the embedding dimension to use for the ES mapping.
+
+    Prefer the sentence model's actual dimension (so the mapping always
+    matches what `vectorize_text` produces). Fall back to the configured
+    setting if the model isn't importable (e.g. in lightweight test envs).
+    """
+    try:
+        from services.ml_services import get_embedding_dims
+
+        return get_embedding_dims()
+    except Exception as exc:
+        logger.warning(
+            "Could not determine sentence model dims, using ELASTIC_EMBEDDING_DIMS=%d: %s",
+            settings.embedding_dims,
+            exc,
+        )
+        return settings.embedding_dims
+
+
 def ensure_posts_index(index: str | None = None) -> bool:
     client = get_client()
     target = index or settings.posts_index
     try:
-        client.indices.create(index=target, **_build_mapping(settings.embedding_dims))
+        client.indices.create(index=target, **_build_mapping(_resolve_embedding_dims()))
         logger.info("Created index %r", target)
         return True
     except Exception as exc:

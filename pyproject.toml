@@ -1,3 +1,5 @@
 [tool.ty.environment]
 python = "./processing_service/venv"
+
+[tool.ty.src]
 root = "./processing_service"

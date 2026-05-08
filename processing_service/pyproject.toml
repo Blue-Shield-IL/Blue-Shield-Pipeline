@@ -30,3 +30,8 @@ ignore = ["E501"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that require heavy ML models (deselect with '-m \"not integration\"')",
+]
