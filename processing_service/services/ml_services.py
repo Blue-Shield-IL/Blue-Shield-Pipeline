@@ -91,7 +91,10 @@ def get_ner_pipeline() -> Any:
     if NER_PIPELINE is None:
         model_name = os.getenv("NER_MODEL_NAME", "dbmdz/bert-large-cased-finetuned-conll03-english")
         NER_PIPELINE = pipeline(
-            "ner", model=model_name, aggregation_strategy="simple", device=HF_DEVICE
+            "ner",
+            model=model_name,
+            aggregation_strategy="simple",
+            device=HF_DEVICE,  # type: ignore[call-overload]
         )
     return NER_PIPELINE
 
@@ -99,9 +102,19 @@ def get_ner_pipeline() -> Any:
 def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> ProcessedPost | None:
     post = Post.model_validate(raw_post_data)
     classifier = get_text_classifier()
-    result = classifier(post.text_content, truncation=True)[0]
+    # Request scores for all labels so we can pick the target class
+    results = classifier(post.text_content, truncation=True, top_k=None)
 
-    score = float(result.get("score", 0.0))
+    # Find the score for the positive/flagged class. If the model predicts
+    # NEGATIVE with high confidence, the POSITIVE score will be low — which
+    # is what we want (it means the post is unlikely antisemitic).
+    score = 0.0
+    for r in results:
+        label = str(r.get("label", "")).upper()
+        if label in ("POSITIVE", "LABEL_1"):
+            score = float(r.get("score", 0.0))
+            break
+
     if score < threshold:
         return None
 

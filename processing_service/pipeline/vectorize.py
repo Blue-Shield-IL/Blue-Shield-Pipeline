@@ -27,7 +27,7 @@ def vectorize(raw_posts: list[RawPost]) -> tuple[list[ProcessedPost], int]:
         except Exception as exc:
             failed += 1
             logger.warning(
-                "Vectorize: failed to build Post from post_id=%r: %s",
+                "Pipeline failed for post_id=%r at filter/analyze/vectorize stage: %s",
                 raw_post_data.get("post_id", "unknown"),
                 exc,
             )
