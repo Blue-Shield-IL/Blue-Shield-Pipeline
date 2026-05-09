@@ -95,8 +95,8 @@ processing_service/
 │   └── runner.py          PipelineRunner (used by cron + /jobs/run)
 ├── tests/
 │   ├── conftest.py
-│   ├── test_pipeline.py   Unit tests (mocked, 8 tests)
-│   └── test_ml.py         Integration tests (real models, gated)
+│   ├── test_pipeline.py   Unit tests (mocked) + E2E test (real ML + ES)
+│   └── test_ml.py         ML integration tests (real models, gated)
 ├── .env.example
 ├── pyproject.toml       Ruff + pytest + ty config
 └── requirements.txt
@@ -128,9 +128,15 @@ processing_service/
 ## Testing
 
 ```bash
-# Unit tests (mocked, no ML models needed)
+# Unit tests (mocked, no ML models needed, no ES needed)
+pytest tests/test_pipeline.py -v -k "not EndToEnd"
+
+# End-to-end test (requires VPN + ES + ML models — inserts posts into ES)
+pytest tests/test_pipeline.py::TestEndToEndWithElastic -v
+
+# All pipeline tests (unit + e2e)
 pytest tests/test_pipeline.py -v
 
-# Integration tests (downloads ~5GB of models on first run)
-RUN_ML_INTEGRATION_TESTS=1 pytest tests/test_ml.py -v
+# ML integration tests (downloads ~5GB of models on first run)
+pytest tests/test_ml.py -v
 ```

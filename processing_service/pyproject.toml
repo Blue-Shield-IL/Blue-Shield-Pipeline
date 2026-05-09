@@ -35,3 +35,7 @@ indent-style = "space"
 markers = [
     "integration: marks tests that require heavy ML models (deselect with '-m \"not integration\"')",
 ]
+filterwarnings = [
+    "ignore::urllib3.exceptions.InsecureRequestWarning",
+    "ignore::DeprecationWarning:transformers",
+]

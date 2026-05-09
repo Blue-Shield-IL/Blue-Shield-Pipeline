@@ -108,3 +108,67 @@ class TestPipelineOrchestration:
         results, failed = vectorize([SAMPLE_RAW_POST])
         assert len(results) == 0
         assert failed == 0
+
+
+class TestEndToEndWithElastic:
+    """Integration tests that run the real pipeline and verify posts land in ES.
+
+    Requires VPN + ES credentials in .env. Skipped if ES is unreachable.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _require_es(self):
+        from pipeline.storage import ping
+
+        if not ping():
+            pytest.skip("Elasticsearch not reachable")
+
+    def test_full_pipeline_stores_posts_in_elastic(self):
+        from config import settings
+        from pipeline.storage import ensure_posts_index, get_client, store_posts
+        from pipeline.vectorize import vectorize
+
+        ensure_posts_index()
+
+        test_posts = [
+            {
+                "post_id": "e2e-test-hostile-1",
+                "text_content": "Jews control the world banks and all media. Wake up!",
+                "author": "testuser",
+                "platform": "telegram",
+                "created_at": "2026-05-09T12:00:00Z",
+            },
+            {
+                "post_id": "e2e-test-hostile-2",
+                "text_content": "Zionists are modern Nazis committing genocide. Death to Israel!",
+                "author": "testuser2",
+                "platform": "telegram",
+                "created_at": "2026-05-09T12:01:00Z",
+            },
+            {
+                "post_id": "e2e-test-neutral-1",
+                "text_content": "Beautiful sunny day at the beach with my family.",
+                "author": "happyuser",
+                "platform": "telegram",
+                "created_at": "2026-05-09T12:02:00Z",
+            },
+        ]
+
+        results, failed = vectorize(test_posts)
+        assert failed == 0
+        assert len(results) > 0  # at least some should pass the filter
+
+        stored, errors = store_posts(results, refresh=True)
+        assert stored == len(results)
+        assert errors == []
+
+        # Verify in ES
+        c = get_client()
+        for post in results:
+            doc = c.get(index=settings.posts_index, id=post.post_id, source_includes=["*"])
+            src = doc["_source"]
+            assert src["post_id"] == post.post_id
+            assert src["text_content"] == post.text_content
+            assert src["sentiment"] is not None
+            assert "antisemitism_score" in src
+            assert len(src.get("text_vector", [])) == 384

@@ -1,14 +1,8 @@
-import os
-
 import pytest
 from pydantic import ValidationError
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        os.getenv("RUN_ML_INTEGRATION_TESTS", "0") != "1",
-        reason="Requires heavy ML models. Set RUN_ML_INTEGRATION_TESTS=1 to run.",
-    ),
 ]
 
 from models import ProcessedPost
