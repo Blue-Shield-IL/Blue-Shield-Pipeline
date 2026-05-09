@@ -1,11 +1,11 @@
 import logging
-import os
 from typing import Any
 
 import torch
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
+from config import settings
 from models import Post, ProcessedPost
 
 TEXT_CLASSIFIER = None
@@ -53,54 +53,45 @@ SENTIMENT_LABEL_MAP = {
 def get_text_classifier() -> Any:
     global TEXT_CLASSIFIER
     if TEXT_CLASSIFIER is None:
-        model_name = os.getenv(
-            "FILTER_MODEL_NAME", "distilbert-base-uncased-finetuned-sst-2-english"
+        TEXT_CLASSIFIER = pipeline(
+            "text-classification", model=settings.filter_model_name, device=HF_DEVICE
         )
-        TEXT_CLASSIFIER = pipeline("text-classification", model=model_name, device=HF_DEVICE)
     return TEXT_CLASSIFIER
 
 
 def get_sentence_model() -> SentenceTransformer:
     global SENTENCE_MODEL
     if SENTENCE_MODEL is None:
-        model_name = os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
-        SENTENCE_MODEL = SentenceTransformer(model_name)
+        SENTENCE_MODEL = SentenceTransformer(settings.sentence_model_name)
     return SENTENCE_MODEL
 
 
 def get_embedding_dims() -> int:
-    """Return the embedding dimension produced by the sentence model.
-
-    Used by the storage layer to size the ES dense_vector field so the
-    mapping always matches what `vectorize_text` actually produces.
-    Falls back to ELASTIC_EMBEDDING_DIMS if the model can't report its size.
-    """
+    """Return the embedding dimension produced by the sentence model."""
     model = get_sentence_model()
-    # `get_embedding_dimension` is the new name; fall back to the old one
-    # for older sentence-transformers versions.
     getter = getattr(model, "get_embedding_dimension", None) or getattr(
         model, "get_sentence_embedding_dimension", None
     )
     dims = getter() if getter else None
     if dims is None:
-        return int(os.getenv("ELASTIC_EMBEDDING_DIMS", "384"))
+        return settings.embedding_dims
     return int(dims)
 
 
 def get_sentiment_classifier() -> Any:
     global SENTIMENT_CLASSIFIER
     if SENTIMENT_CLASSIFIER is None:
-        model_name = os.getenv("SENTIMENT_MODEL_NAME", "cardiffnlp/twitter-roberta-base-sentiment")
-        SENTIMENT_CLASSIFIER = pipeline("text-classification", model=model_name, device=HF_DEVICE)
+        SENTIMENT_CLASSIFIER = pipeline(
+            "text-classification", model=settings.sentiment_model_name, device=HF_DEVICE
+        )
     return SENTIMENT_CLASSIFIER
 
 
 def get_zero_shot_classifier() -> Any:
     global ZERO_SHOT_CLASSIFIER
     if ZERO_SHOT_CLASSIFIER is None:
-        model_name = os.getenv("ZERO_SHOT_MODEL_NAME", "facebook/bart-large-mnli")
         ZERO_SHOT_CLASSIFIER = pipeline(
-            "zero-shot-classification", model=model_name, device=HF_DEVICE
+            "zero-shot-classification", model=settings.zero_shot_model_name, device=HF_DEVICE
         )
     return ZERO_SHOT_CLASSIFIER
 
@@ -108,10 +99,9 @@ def get_zero_shot_classifier() -> Any:
 def get_ner_pipeline() -> Any:
     global NER_PIPELINE
     if NER_PIPELINE is None:
-        model_name = os.getenv("NER_MODEL_NAME", "dbmdz/bert-large-cased-finetuned-conll03-english")
         NER_PIPELINE = pipeline(
             "ner",
-            model=model_name,
+            model=settings.ner_model_name,
             aggregation_strategy="simple",
             device=HF_DEVICE,
         )  # ty:ignore[no-matching-overload]
@@ -119,21 +109,12 @@ def get_ner_pipeline() -> Any:
 
 
 def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> ProcessedPost | None:
-    """Filter a post by the score of a configured target label.
-
-    The classifier model and the label whose score is treated as the
-    "antisemitism probability" are both env-configurable via
-    FILTER_MODEL_NAME and FILTER_TARGET_LABEL. The default SST-2 model
-    treats "POSITIVE" as the target — that's a stand-in for development;
-    swap it for an actual antisemitism/abuse classifier in production.
-    """
+    """Filter a post by the score of a configured target label."""
     post = Post.model_validate(raw_post_data)
     classifier = get_text_classifier()
-    # Request scores for all labels so we can pick the target class by name,
-    # not rely on whichever label the classifier happens to argmax to.
     results = classifier(post.text_content, truncation=True, top_k=None)
 
-    target_label = os.getenv("FILTER_TARGET_LABEL", "NEGATIVE").upper()
+    target_label = settings.filter_target_label.upper()
     available_labels = [str(r.get("label", "")).upper() for r in results]
 
     if target_label not in available_labels:
