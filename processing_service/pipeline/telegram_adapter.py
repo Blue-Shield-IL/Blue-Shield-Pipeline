@@ -1,7 +1,7 @@
 """Telegram ingestion adapter.
 
-This module is additive to the existing pipeline. It does not alter the
-current ingestion entrypoints and can be wired in later.
+This module provides Telegram ingestion support for the pipeline and backs
+the Telegram fetch/listen ingestion entrypoints.
 """
 
 from __future__ import annotations
