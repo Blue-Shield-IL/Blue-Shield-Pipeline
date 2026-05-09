@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```
 
 Copy `.env.example` → `.env` and fill in credentials.
-The team ES is at `https://10.10.248.126:9200` (VPN required).
+The team ES host is shared internally (VPN required).
 
 ---
 

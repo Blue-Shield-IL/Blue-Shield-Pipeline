@@ -109,13 +109,12 @@ def get_ner_pipeline() -> Any:
     global NER_PIPELINE
     if NER_PIPELINE is None:
         model_name = os.getenv("NER_MODEL_NAME", "dbmdz/bert-large-cased-finetuned-conll03-english")
-        # ty: ignore[no-matching-overload]
         NER_PIPELINE = pipeline(
             "ner",
             model=model_name,
             aggregation_strategy="simple",
             device=HF_DEVICE,
-        )
+        )  # ty:ignore[no-matching-overload]
     return NER_PIPELINE
 
 
@@ -134,7 +133,7 @@ def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> Proces
     # not rely on whichever label the classifier happens to argmax to.
     results = classifier(post.text_content, truncation=True, top_k=None)
 
-    target_label = os.getenv("FILTER_TARGET_LABEL", "POSITIVE").upper()
+    target_label = os.getenv("FILTER_TARGET_LABEL", "NEGATIVE").upper()
     available_labels = [str(r.get("label", "")).upper() for r in results]
 
     if target_label not in available_labels:
@@ -164,10 +163,8 @@ def analyze_content(processed_post: ProcessedPost) -> ProcessedPost:
     try:
         sentiment_classifier = get_sentiment_classifier()
         sentiment_result = sentiment_classifier(text, truncation=True)[0]
-        raw_label = str(sentiment_result.get("label", "")).strip()
-        processed_post.sentiment = SENTIMENT_LABEL_MAP.get(
-            raw_label, SENTIMENT_LABEL_MAP.get(raw_label.lower(), "Neutral")
-        )
+        raw_label = str(sentiment_result.get("label", "")).strip().upper()
+        processed_post.sentiment = SENTIMENT_LABEL_MAP.get(raw_label, "Neutral")
     except Exception:
         LOGGER.exception("Sentiment analysis failed; using previous/default sentiment")
 

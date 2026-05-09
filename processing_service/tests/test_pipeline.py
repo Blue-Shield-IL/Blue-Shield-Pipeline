@@ -35,7 +35,7 @@ class TestPostModel:
 class TestFilterPost:
     @patch("services.ml_services.get_text_classifier")
     def test_high_score_returns_processed_post(self, mock_get_classifier):
-        mock_classifier = MagicMock(return_value=[{"label": "POSITIVE", "score": 0.95}])
+        mock_classifier = MagicMock(return_value=[{"label": "NEGATIVE", "score": 0.95}])
         mock_get_classifier.return_value = mock_classifier
 
         from services.ml_services import filter_post
@@ -110,6 +110,7 @@ class TestPipelineOrchestration:
         assert failed == 0
 
 
+@pytest.mark.integration
 class TestEndToEndWithElastic:
     """Integration tests that run the real pipeline and verify posts land in ES.
 

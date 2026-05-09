@@ -32,6 +32,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 markers = [
     "integration: marks tests that require heavy ML models (deselect with '-m \"not integration\"')",
 ]
