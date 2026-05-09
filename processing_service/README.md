@@ -103,10 +103,10 @@ processing_service/
 | `ELASTIC_REQUEST_TIMEOUT`| `30`                           | Timeout in seconds.              |
 | `ELASTIC_EMBEDDING_DIMS` | `384`                          | Vector dimension.                |
 | `TELEGRAM_ENABLED`       | `false`                        | Enables Telegram integration.    |
-| `TELEGRAM_API_ID`        | ג€”                              | Telegram app API ID.             |
-| `TELEGRAM_API_HASH`      | ג€”                              | Telegram app API hash.           |
+| `TELEGRAM_API_ID`        |                                | Telegram app API ID.             |
+| `TELEGRAM_API_HASH`      |                                | Telegram app API hash.           |
 | `TELEGRAM_SESSION_FILE`  | `telegram.session`             | Local Telethon session file.     |
-| `TELEGRAM_SUPPLIER_CHANNEL` | ג€”                           | Telegram channel handle or link. |
+| `TELEGRAM_SUPPLIER_CHANNEL` |                           | Telegram channel handle or link. |
 | `TELEGRAM_FETCH_LIMIT`   | `10`                           | Default batch fetch size.        |
 | `TELEGRAM_BATCH_SIZE`    | `50`                           | Reserved for listener batching.  |
 | `TELEGRAM_FLUSH_SECONDS` | `5`                            | Reserved listener flush window.  |

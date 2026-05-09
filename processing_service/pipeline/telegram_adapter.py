@@ -6,7 +6,7 @@ current ingestion entrypoints and can be wired in later.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from config import Settings, settings
@@ -57,8 +57,6 @@ class TelegramAdapter:
 
     def connect(self) -> None:
         self.validate_settings()
-        if not self.settings.telegram_enabled:
-            return
         if self._client is None:
             self._client = self._client_factory(
                 self.settings.telegram_session_file,
@@ -77,7 +75,6 @@ class TelegramAdapter:
     def fetch_recent(self, limit: int) -> list[TelegramRawPost]:
         if limit <= 0:
             return []
-        self.validate_settings()
         if not self.settings.telegram_enabled:
             return []
 
@@ -95,7 +92,6 @@ class TelegramAdapter:
         max_messages: int | None = None,
     ) -> None:
         """Keep one Telegram connection open and stream supplier messages."""
-        self.validate_settings()
         if not self.settings.telegram_enabled:
             return
         if events is None:
@@ -118,13 +114,14 @@ class TelegramAdapter:
         self._client.run_until_disconnected()
 
     def normalize_message(self, message: Any) -> TelegramRawPost:
-        channel_identity = self._channel_name(message)
         created_at = self._coerce_datetime(getattr(message, "date", None))
 
         return {
-            "content": self._extract_text(message),
-            "channel": channel_identity,
-            "creation_time": created_at.isoformat(),
+            "post_id": self._post_id(message),
+            "text_content": self._extract_text(message),
+            "author": self._author_name(message),
+            "platform": "telegram",
+            "created_at": created_at.isoformat(),
         }
 
     def _resolve_supplier_entity(self) -> Any:
@@ -171,9 +168,59 @@ class TelegramAdapter:
 
         return "unknown"
 
+    def _author_name(self, message: Any) -> str:
+        sender = getattr(message, "sender", None)
+
+        username = getattr(sender, "username", None)
+        if username:
+            return f"@{username}"
+
+        first_name = getattr(sender, "first_name", None)
+        last_name = getattr(sender, "last_name", None)
+        full_name = " ".join(part for part in (first_name, last_name) if part)
+        if full_name:
+            return full_name
+
+        sender_id = getattr(sender, "id", None)
+        if sender_id is not None:
+            return str(sender_id)
+
+        return self._channel_name(message)
+
+    def _post_id(self, message: Any) -> str:
+        chat_key = self._channel_key(message)
+        message_id = getattr(message, "id", None)
+        if message_id is not None:
+            return f"telegram:{chat_key}:{message_id}"
+
+        created_at = self._coerce_datetime(getattr(message, "date", None))
+        return f"telegram:{chat_key}:{created_at.isoformat()}"
+
+    def _channel_key(self, message: Any) -> str:
+        chat = getattr(message, "chat", None)
+        peer_id = getattr(message, "peer_id", None)
+
+        chat_id = getattr(chat, "id", None)
+        if chat_id is not None:
+            return str(chat_id)
+
+        for attr in ("channel_id", "chat_id", "user_id"):
+            value = getattr(peer_id, attr, None)
+            if value is not None:
+                return str(value)
+
+        username = getattr(chat, "username", None)
+        if username:
+            return str(username)
+
+        if self.settings.telegram_supplier_channel:
+            return self.settings.telegram_supplier_channel
+
+        return "unknown"
+
     def _coerce_datetime(self, value: Any) -> datetime:
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                return value.replace(tzinfo=UTC)
-            return value.astimezone(UTC)
-        return datetime.now(UTC)
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+        return datetime.now(timezone.utc)

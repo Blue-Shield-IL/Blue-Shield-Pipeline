@@ -20,11 +20,15 @@ def _settings_snapshot() -> dict[str, Any]:
 def main() -> int:
     print("Telegram listener settings:")
     print(json.dumps(_settings_snapshot(), indent=2))
+
+    if not settings.telegram_enabled:
+        print("Telegram listener is disabled. Set TELEGRAM_ENABLED=true to enable it.")
+        return 0
+
     print("Listening for new messages. Press Ctrl+C to stop.")
 
     adapter = TelegramAdapter()
     try:
-        adapter.validate_settings()
         adapter.connect()
 
         client = adapter._client
