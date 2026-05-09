@@ -73,8 +73,18 @@ def get_embedding_dims() -> int:
 
     Used by the storage layer to size the ES dense_vector field so the
     mapping always matches what `vectorize_text` actually produces.
+    Falls back to ELASTIC_EMBEDDING_DIMS if the model can't report its size.
     """
-    return int(get_sentence_model().get_sentence_embedding_dimension())
+    model = get_sentence_model()
+    # `get_embedding_dimension` is the new name; fall back to the old one
+    # for older sentence-transformers versions.
+    getter = getattr(model, "get_embedding_dimension", None) or getattr(
+        model, "get_sentence_embedding_dimension", None
+    )
+    dims = getter() if getter else None
+    if dims is None:
+        return int(os.getenv("ELASTIC_EMBEDDING_DIMS", "384"))
+    return int(dims)
 
 
 def get_sentiment_classifier() -> Any:
@@ -99,28 +109,46 @@ def get_ner_pipeline() -> Any:
     global NER_PIPELINE
     if NER_PIPELINE is None:
         model_name = os.getenv("NER_MODEL_NAME", "dbmdz/bert-large-cased-finetuned-conll03-english")
+        # ty: ignore[no-matching-overload]
         NER_PIPELINE = pipeline(
             "ner",
             model=model_name,
             aggregation_strategy="simple",
-            device=HF_DEVICE,  # type: ignore[call-overload]
+            device=HF_DEVICE,
         )
     return NER_PIPELINE
 
 
 def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> ProcessedPost | None:
+    """Filter a post by the score of a configured target label.
+
+    The classifier model and the label whose score is treated as the
+    "antisemitism probability" are both env-configurable via
+    FILTER_MODEL_NAME and FILTER_TARGET_LABEL. The default SST-2 model
+    treats "POSITIVE" as the target — that's a stand-in for development;
+    swap it for an actual antisemitism/abuse classifier in production.
+    """
     post = Post.model_validate(raw_post_data)
     classifier = get_text_classifier()
-    # Request scores for all labels so we can pick the target class
+    # Request scores for all labels so we can pick the target class by name,
+    # not rely on whichever label the classifier happens to argmax to.
     results = classifier(post.text_content, truncation=True, top_k=None)
 
-    # Find the score for the positive/flagged class. If the model predicts
-    # NEGATIVE with high confidence, the POSITIVE score will be low — which
-    # is what we want (it means the post is unlikely antisemitic).
+    target_label = os.getenv("FILTER_TARGET_LABEL", "POSITIVE").upper()
+    available_labels = [str(r.get("label", "")).upper() for r in results]
+
+    if target_label not in available_labels:
+        LOGGER.warning(
+            "FILTER_TARGET_LABEL=%r not found in classifier output labels %s. "
+            "All posts will be filtered out. Check FILTER_MODEL_NAME and FILTER_TARGET_LABEL.",
+            target_label,
+            available_labels,
+        )
+        return None
+
     score = 0.0
     for r in results:
-        label = str(r.get("label", "")).upper()
-        if label in ("POSITIVE", "LABEL_1"):
+        if str(r.get("label", "")).upper() == target_label:
             score = float(r.get("score", 0.0))
             break
 
