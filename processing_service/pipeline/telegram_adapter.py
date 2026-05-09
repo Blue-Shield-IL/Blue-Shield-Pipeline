@@ -6,8 +6,9 @@ the Telegram fetch/listen ingestion entrypoints.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from config import Settings, settings
 
@@ -79,6 +80,7 @@ class TelegramAdapter:
             return []
 
         self.connect()
+        assert self._client is not None  # connect() guarantees this
         entity = self._resolve_supplier_entity()
         raw_posts: list[TelegramRawPost] = []
         for message in self._client.iter_messages(entity, limit=limit):
@@ -100,6 +102,7 @@ class TelegramAdapter:
             )
 
         self.connect()
+        assert self._client is not None  # connect() guarantees this
         entity = self._resolve_supplier_entity()
         seen_messages = 0
 
@@ -126,9 +129,7 @@ class TelegramAdapter:
 
     def _resolve_supplier_entity(self) -> Any:
         if self._supplier_entity is None:
-            self._supplier_entity = self._client.get_entity(
-                self.settings.telegram_supplier_channel
-            )
+            self._supplier_entity = self._client.get_entity(self.settings.telegram_supplier_channel)
         return self._supplier_entity
 
     def _extract_text(self, message: Any) -> str:

@@ -35,11 +35,11 @@ class Settings:
     request_timeout: float = field(
         default_factory=lambda: _float_env("ELASTIC_REQUEST_TIMEOUT", "30")
     )
-    embedding_dims: int = field(
-        default_factory=lambda: _int_env("ELASTIC_EMBEDDING_DIMS", "384")
-    )
+    embedding_dims: int = field(default_factory=lambda: _int_env("ELASTIC_EMBEDDING_DIMS", "384"))
     telegram_enabled: bool = field(default_factory=lambda: _bool_env("TELEGRAM_ENABLED", "false"))
-    telegram_api_id: int | None = field(default_factory=lambda: _optional_int_env("TELEGRAM_API_ID"))
+    telegram_api_id: int | None = field(
+        default_factory=lambda: _optional_int_env("TELEGRAM_API_ID")
+    )
     telegram_api_hash: str | None = field(
         default_factory=lambda: os.getenv("TELEGRAM_API_HASH") or None
     )
@@ -49,7 +49,9 @@ class Settings:
     telegram_supplier_channel: str | None = field(
         default_factory=lambda: os.getenv("TELEGRAM_SUPPLIER_CHANNEL") or None
     )
-    telegram_fetch_limit: int = field(default_factory=lambda: _int_env("TELEGRAM_FETCH_LIMIT", "10"))
+    telegram_fetch_limit: int = field(
+        default_factory=lambda: _int_env("TELEGRAM_FETCH_LIMIT", "10")
+    )
     telegram_batch_size: int = field(default_factory=lambda: _int_env("TELEGRAM_BATCH_SIZE", "50"))
     telegram_flush_seconds: float = field(
         default_factory=lambda: _float_env("TELEGRAM_FLUSH_SECONDS", "5")
