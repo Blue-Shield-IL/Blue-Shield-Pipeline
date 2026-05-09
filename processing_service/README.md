@@ -3,8 +3,8 @@
 Python worker that runs the Blue Shield data pipeline:
 
 1. **Ingest** — fetch posts from Telegram (stub, real integration coming).
-2. **Process** — filter by score, analyze sentiment/IHRA labels/keywords/country, vectorize with sentence-transformers. Only posts classified as **Hostile** are kept.
-3. **Store** — persist hostile posts to Elasticsearch with dense-vector embeddings.
+2. **Process** — filter by antisemitism score, analyze (sentiment/IHRA labels/keywords/country), vectorize with sentence-transformers. Posts below the score threshold are discarded.
+3. **Store** — persist all posts that passed the filter to Elasticsearch with dense-vector embeddings.
 
 Triggered via `POST /jobs/run` or a scheduled cron job — same code path.
 

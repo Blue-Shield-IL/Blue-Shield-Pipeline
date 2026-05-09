@@ -5,7 +5,7 @@ Data processing pipeline for the Blue Shield project — monitors, analyzes, and
 ## Architecture
 
 ```
-[Telegram / Reddit] → Processing Service → Elasticsearch → [API Server → Dashboard]
+[Telegram] → Processing Service → Elasticsearch → [API Server → Dashboard]
                       (this repo)
 ```
 
