@@ -10,13 +10,21 @@ from typing import Any, Union, get_args, get_origin
 from elasticsearch import Elasticsearch, helpers
 
 from config import Settings, settings
-from models import Post
+from models import Post, ProcessedPost
 
 logger = logging.getLogger(__name__)
 
 
 # Fields that should be mapped as `keyword` (exact match) instead of `text` (analyzed).
-_KEYWORD_FIELDS = {"post_id", "author", "platform", "language", "url"}
+_KEYWORD_FIELDS = {
+    "post_id",
+    "author",
+    "platform",
+    "language",
+    "url",
+    "sentiment",
+    "country_of_origin",
+}
 
 
 def _unwrap_optional(annotation: Any) -> Any:
@@ -64,9 +72,9 @@ def _annotation_to_es(name: str, annotation: Any, embedding_dims: int) -> dict[s
 
 
 def _build_mapping(embedding_dims: int) -> dict[str, Any]:
-    """Derive ES mapping from the Post model fields."""
+    """Derive ES mapping from the ProcessedPost model fields."""
     properties: dict[str, Any] = {}
-    for name, field_info in Post.model_fields.items():
+    for name, field_info in ProcessedPost.model_fields.items():
         properties[name] = _annotation_to_es(name, field_info.annotation, embedding_dims)
     return {"mappings": {"properties": properties}}
 
@@ -124,14 +132,17 @@ def ping() -> bool:
 def ensure_posts_index(index: str | None = None) -> bool:
     client = get_client()
     target = index or settings.posts_index
+    if client.indices.exists(index=target):
+        return False
     try:
         client.indices.create(index=target, **_build_mapping(settings.embedding_dims))
-        logger.info("Created index %r", target)
-        return True
     except Exception as exc:
         if "resource_already_exists_exception" in str(exc):
             return False
+        logger.exception("Failed to create index %r", target)
         raise
+    logger.info("Created index %r", target)
+    return True
 
 
 def store_post(post: Post, *, index: str | None = None, refresh: bool = False) -> dict[str, Any]:
