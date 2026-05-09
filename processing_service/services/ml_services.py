@@ -115,22 +115,23 @@ def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> Proces
     results = classifier(post.text_content, truncation=True, top_k=None)
 
     target_label = settings.filter_target_label.upper()
-    available_labels = [str(r.get("label", "")).upper() for r in results]
 
-    if target_label not in available_labels:
+    score = 0.0
+    found = False
+    for r in results:
+        if str(r.get("label", "")).upper() == target_label:
+            score = float(r.get("score", 0.0))
+            found = True
+            break
+
+    if not found:
         LOGGER.warning(
             "FILTER_TARGET_LABEL=%r not found in classifier output labels %s. "
             "All posts will be filtered out. Check FILTER_MODEL_NAME and FILTER_TARGET_LABEL.",
             target_label,
-            available_labels,
+            [str(r.get("label", "")) for r in results],
         )
         return None
-
-    score = 0.0
-    for r in results:
-        if str(r.get("label", "")).upper() == target_label:
-            score = float(r.get("score", 0.0))
-            break
 
     if score < threshold:
         return None
@@ -146,8 +147,8 @@ def analyze_content(processed_post: ProcessedPost) -> ProcessedPost:
         sentiment_result = sentiment_classifier(text, truncation=True)[0]
         raw_label = str(sentiment_result.get("label", "")).strip().upper()
         processed_post.sentiment = SENTIMENT_LABEL_MAP.get(raw_label, "Neutral")
-    except Exception:
-        LOGGER.exception("Sentiment analysis failed; using previous/default sentiment")
+    except Exception as exc:
+        LOGGER.exception("Sentiment analysis failed: %s", exc)
 
     try:
         zero_shot_classifier = get_zero_shot_classifier()
@@ -167,8 +168,8 @@ def analyze_content(processed_post: ProcessedPost) -> ProcessedPost:
             if float(label_scores.get(keyword, 0.0)) >= 0.35:
                 merged_keywords.add(keyword)
         processed_post.keywords = sorted(merged_keywords)
-    except Exception:
-        LOGGER.exception("Zero-shot IHRA/keyword extraction failed; using previous/default values")
+    except Exception as exc:
+        LOGGER.exception("Zero-shot IHRA/keyword extraction failed: %s", exc)
 
     try:
         ner = get_ner_pipeline()
@@ -182,8 +183,8 @@ def analyze_content(processed_post: ProcessedPost) -> ProcessedPost:
                     country = word
                     break
         processed_post.country_of_origin = country
-    except Exception:
-        LOGGER.exception("NER country extraction failed; using previous/default country")
+    except Exception as exc:
+        LOGGER.exception("NER country extraction failed: %s", exc)
 
     return processed_post
 
