@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from pydantic import ValidationError
 
 pytestmark = [
     pytest.mark.integration,
@@ -60,7 +61,7 @@ class TestRealFilterPost:
         assert 0.0 <= result.antisemitism_score <= 1.0
 
     def test_invalid_post_raises_on_empty_text(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="text_content"):
             filter_post({**HIGH_CONFIDENCE_POST, "text_content": "  "})
 
 

@@ -3,8 +3,8 @@
 Python worker that runs the Blue Shield data pipeline:
 
 1. **Ingest** — fetch posts from Telegram (stub, real integration coming).
-2. **Process** — filter by antisemitism score, analyze sentiment/IHRA labels/keywords/country, vectorize with sentence-transformers.
-3. **Store** — persist enriched posts to Elasticsearch with dense-vector embeddings.
+2. **Process** — filter by score, analyze sentiment/IHRA labels/keywords/country, vectorize with sentence-transformers. Only posts classified as **Hostile** are kept.
+3. **Store** — persist hostile posts to Elasticsearch with dense-vector embeddings.
 
 Triggered via `POST /jobs/run` or a scheduled cron job — same code path.
 
@@ -117,7 +117,7 @@ processing_service/
 | `ELASTIC_REQUEST_TIMEOUT`| `30`                                             | Timeout in seconds.                        |
 | `ELASTIC_EMBEDDING_DIMS` | `384`                                            | Fallback vector dimension.                 |
 | `FILTER_MODEL_NAME`      | `distilbert-base-uncased-finetuned-sst-2-english`| Binary classifier model.                   |
-| `FILTER_TARGET_LABEL`    | `POSITIVE`                                       | Label treated as "antisemitic" class.      |
+| `FILTER_TARGET_LABEL`    | `NEGATIVE`                                       | Label treated as flagged class (set to NEGATIVE for SST-2). |
 | `SENTENCE_MODEL_NAME`    | `all-MiniLM-L6-v2`                              | Embedding model (384-dim).                 |
 | `SENTIMENT_MODEL_NAME`   | `cardiffnlp/twitter-roberta-base-sentiment`      | Sentiment classifier.                      |
 | `ZERO_SHOT_MODEL_NAME`   | `facebook/bart-large-mnli`                       | Zero-shot for IHRA + keywords.             |

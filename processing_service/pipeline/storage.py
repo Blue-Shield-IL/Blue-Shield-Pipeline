@@ -152,14 +152,15 @@ def _resolve_embedding_dims() -> int:
 def ensure_posts_index(index: str | None = None) -> bool:
     client = get_client()
     target = index or settings.posts_index
+    if client.indices.exists(index=target):
+        return False
     try:
         client.indices.create(index=target, **_build_mapping(_resolve_embedding_dims()))
-        logger.info("Created index %r", target)
-        return True
-    except Exception as exc:
-        if "resource_already_exists_exception" in str(exc):
-            return False
+    except Exception:
+        logger.exception("Failed to create index %r", target)
         raise
+    logger.info("Created index %r", target)
+    return True
 
 
 def store_post(post: Post, *, index: str | None = None, refresh: bool = False) -> dict[str, Any]:

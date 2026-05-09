@@ -27,7 +27,18 @@ def vectorize(raw_posts: list[RawPost]) -> tuple[list[ProcessedPost], int]:
             else:
                 processed_post = analyze_content(processed_post)
                 processed_post = vectorize_text(processed_post)
-                results.append(processed_post)
+
+                # Only keep posts classified as Hostile by the sentiment model.
+                # The filter stage is a rough pre-screen; sentiment is the real gate.
+                if processed_post.sentiment != "Hostile":
+                    filtered_out += 1
+                    logger.debug(
+                        "Post filtered out (sentiment=%r, not Hostile): post_id=%r",
+                        processed_post.sentiment,
+                        processed_post.post_id,
+                    )
+                else:
+                    results.append(processed_post)
         except Exception as exc:
             failed += 1
             logger.warning(

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from models import Post, ProcessedPost
 
@@ -23,11 +24,11 @@ class TestPostModel:
         assert post.likes == 10
 
     def test_empty_post_id_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="post_id"):
             Post.model_validate({**SAMPLE_RAW_POST, "post_id": "   "})
 
     def test_empty_text_content_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="text_content"):
             Post.model_validate({**SAMPLE_RAW_POST, "text_content": ""})
 
 
