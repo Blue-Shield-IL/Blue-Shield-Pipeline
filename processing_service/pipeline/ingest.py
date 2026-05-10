@@ -1,33 +1,43 @@
-"""Step 1 — Ingestion (stub)."""
+"""Step 1 - Ingestion."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from collections.abc import Callable
 from typing import Any
+
+from .telegram_adapter import TelegramAdapter
 
 logger = logging.getLogger(__name__)
 
 RawPost = dict[str, Any]
+RawPostHandler = Callable[[RawPost], None]
 
 
 def fetch_telegram(limit: int = 10) -> list[RawPost]:
-    """Stub — returns fake Telegram posts until the real fetcher lands."""
-    now = datetime.now(timezone.utc)
-    return [
-        {
-            "post_id": f"telegram-stub-{int(now.timestamp())}-{i}",
-            "text_content": f"Stub Telegram message {i}",
-            "author": "@stub_channel",
-            "platform": "telegram",
-            "created_at": now.isoformat(),
-        }
-        for i in range(1, limit + 1)
-    ]
+    """Fetch a bounded batch of recent Telegram messages."""
+    adapter = TelegramAdapter()
+    try:
+        return adapter.fetch_recent(limit)
+    finally:
+        adapter.disconnect()
+
+
+def listen_telegram(on_post: RawPostHandler) -> None:
+    """Keep one Telegram connection open and stream normalized messages."""
+    adapter = TelegramAdapter()
+    try:
+        adapter.listen_forever(on_post)
+    finally:
+        adapter.disconnect()
 
 
 FETCHERS: dict[str, Any] = {
     "telegram": fetch_telegram,
+}
+
+LISTENERS: dict[str, Any] = {
+    "telegram": listen_telegram,
 }
 
 
@@ -44,3 +54,16 @@ def ingest(sources: list[str], limit_per_source: int = 10) -> list[RawPost]:
         except Exception:
             logger.exception("Fetcher %r failed", source)
     return posts
+
+
+def ingest_forever(sources: list[str], on_post: RawPostHandler) -> None:
+    """Run source listeners forever. Unknown sources are skipped."""
+    for source in sources:
+        listener = LISTENERS.get(source)
+        if listener is None:
+            logger.warning("Unknown source %r; skipping", source)
+            continue
+        try:
+            listener(on_post)
+        except Exception:
+            logger.exception("Listener %r failed", source)

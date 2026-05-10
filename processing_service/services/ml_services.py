@@ -108,8 +108,12 @@ def get_ner_pipeline() -> Any:
     return NER_PIPELINE
 
 
-def filter_post(raw_post_data: dict[str, Any], threshold: float = 0.6) -> ProcessedPost | None:
+def filter_post(
+    raw_post_data: dict[str, Any], threshold: float | None = None
+) -> ProcessedPost | None:
     """Filter a post by the score of a configured target label."""
+    if threshold is None:
+        threshold = settings.filter_threshold
     post = Post.model_validate(raw_post_data)
     classifier = get_text_classifier()
     results = classifier(post.text_content, truncation=True, top_k=None)
