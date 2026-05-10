@@ -126,6 +126,13 @@ processing_service/
 | `TELEGRAM_FLUSH_SECONDS` | `5`                            | Reserved listener flush window.  |
 | `TELEGRAM_STARTUP_BACKFILL_LIMIT` | `100`                 | Reserved startup backfill size.  |
 | `TELEGRAM_REQUEST_TIMEOUT` | `30`                         | Telegram request timeout.        |
+| `FILTER_MODEL_NAME`      | `distilbert-base-uncased-finetuned-sst-2-english` | Binary classifier model. |
+| `FILTER_TARGET_LABEL`    | `NEGATIVE`                     | Label treated as flagged class (matches SST-2). |
+| `FILTER_THRESHOLD`       | `0.75`                         | Minimum score to pass the filter (0.0–1.0). |
+| `SENTENCE_MODEL_NAME`    | `all-MiniLM-L6-v2`             | Embedding model (384-dim).       |
+| `SENTIMENT_MODEL_NAME`   | `cardiffnlp/twitter-roberta-base-sentiment` | Sentiment classifier. |
+| `ZERO_SHOT_MODEL_NAME`   | `facebook/bart-large-mnli`     | Zero-shot for IHRA + keywords.   |
+| `NER_MODEL_NAME`         | `dbmdz/bert-large-cased-finetuned-conll03-english` | NER for country extraction. |
 
 ## Telegram Setup
 

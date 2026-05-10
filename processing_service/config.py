@@ -72,6 +72,9 @@ class Settings:
     filter_target_label: str = field(
         default_factory=lambda: os.getenv("FILTER_TARGET_LABEL", "NEGATIVE")
     )
+    filter_threshold: float = field(
+        default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.75"))
+    )
     sentence_model_name: str = field(
         default_factory=lambda: os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
     )
