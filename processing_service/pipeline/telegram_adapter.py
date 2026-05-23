@@ -84,7 +84,9 @@ class TelegramAdapter:
         entity = self._resolve_supplier_entity()
         raw_posts: list[TelegramRawPost] = []
         for message in self._client.iter_messages(entity, limit=limit):
-            raw_posts.append(self.normalize_message(message))
+            normalized = self.normalize_message(message)
+            if normalized.get("text_content", ""):
+                raw_posts.append(normalized)
         return raw_posts
 
     def listen_forever(

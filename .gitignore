@@ -33,7 +33,7 @@ dmypy.json
 .venv/
 
 # Environment variables (secrets)
-.env
+processing_service/.env
 
 # Testing
 .pytest_cache/

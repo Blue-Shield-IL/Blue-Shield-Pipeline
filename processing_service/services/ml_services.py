@@ -10,12 +10,18 @@ from models import Post, ProcessedPost
 
 TEXT_CLASSIFIER = None
 SENTENCE_MODEL = None
-SENTIMENT_CLASSIFIER = None
 ZERO_SHOT_CLASSIFIER = None
 NER_PIPELINE = None
 HF_DEVICE = 0 if torch.cuda.is_available() else -1
 
 LOGGER = logging.getLogger(__name__)
+
+TOXICITY_WEIGHTS: dict[str, float] = {
+    "label_3": 1.0,  # ANTISEMITISM
+    "label_7": 0.2,  # RACISM
+    "label_2": 0.1,  # RELIGION
+    "label_6": 0.3   # POLITICS
+}
 
 IHRA_LABELS = [
     "Calling for, aiding, or justifying the killing or harming of Jews",
@@ -31,30 +37,43 @@ IHRA_LABELS = [
 ]
 
 KEYWORD_LABELS = [
-    "Holocaust",
-    "October 7th",
-    "Zionist",
-    "synagogue",
-    "antisemitism",
-    "Jewish conspiracy",
-    "globalists",
-    "media control",
-    "bank control",
-    "dual loyalty",
+    # Events & context
+    "October 7th Hamas attack",
+    "Holocaust denial or distortion",
+    "pogrom or mob violence against Jews",
+    # Classic tropes
+    "Jewish control of media",
+    "Jewish control of banks or financial system",
+    "Jewish world domination conspiracy",
+    "blood libel",
+    "great replacement theory",
+    "Protocols of the Elders of Zion",
+    # Modern coded language
+    "globalist conspiracy",
+    "George Soros conspiracy",
+    "Rothschild conspiracy",
+    "New World Order Jewish conspiracy",
+    # Israel context
+    "Israel genocide accusation",
+    "Zionist occupation",
+    "Israeli apartheid",
 ]
 
-SENTIMENT_LABEL_MAP = {
-    "LABEL_0": "Hostile",
-    "LABEL_1": "Neutral",
-    "LABEL_2": "Supportive",
-}
+SENTIMENT_LABELS = ["Supportive", "Neutral", "Negative", "Hostile"]
 
 
 def get_text_classifier() -> Any:
     global TEXT_CLASSIFIER
     if TEXT_CLASSIFIER is None:
         TEXT_CLASSIFIER = pipeline(
-            "text-classification", model=settings.filter_model_name, device=HF_DEVICE
+            "text-classification",
+            model=settings.filter_model_name,
+            device=HF_DEVICE,
+            padding=True,
+            truncation=True,
+            top_k=None,
+            function_to_apply="sigmoid",
+            dtype=torch.float16 if HF_DEVICE == 0 else torch.float32
         )
     return TEXT_CLASSIFIER
 
@@ -78,15 +97,6 @@ def get_embedding_dims() -> int:
     return int(dims)
 
 
-def get_sentiment_classifier() -> Any:
-    global SENTIMENT_CLASSIFIER
-    if SENTIMENT_CLASSIFIER is None:
-        SENTIMENT_CLASSIFIER = pipeline(
-            "text-classification", model=settings.sentiment_model_name, device=HF_DEVICE
-        )
-    return SENTIMENT_CLASSIFIER
-
-
 def get_zero_shot_classifier() -> Any:
     global ZERO_SHOT_CLASSIFIER
     if ZERO_SHOT_CLASSIFIER is None:
@@ -108,93 +118,157 @@ def get_ner_pipeline() -> Any:
     return NER_PIPELINE
 
 
-def filter_post(
-    raw_post_data: dict[str, Any], threshold: float | None = None
-) -> ProcessedPost | None:
-    """Filter a post by the score of a configured target label."""
+def filter_posts_batch(
+    raw_posts: list[dict[str, Any]],
+    threshold: float | None = None,
+    batch_size: int | None = None,
+) -> tuple[list[ProcessedPost], int]:
+    """
+    Runs unitary/unbiased-toxic-roberta over each post, computes a weighted
+    compound toxicity score from all output dimensions, and keeps only posts
+    that meet the threshold.
+
+    Returns (passed_posts, filtered_out_count).
+    Validation failures are counted as filtered-out.
+    """
     if threshold is None:
         threshold = settings.filter_threshold
-    post = Post.model_validate(raw_post_data)
+    if batch_size is None:
+        batch_size = settings.ml_batch_size
+
+    posts: list[Post] = []
+    filtered_out = 0
+    for rp in raw_posts:
+        try:
+            posts.append(Post.model_validate(rp))
+        except Exception as exc:
+            LOGGER.warning("Post validation failed (skipping): %s", exc)
+            filtered_out += 1
+
+    if not posts:
+        return [], filtered_out
+
+    texts = [p.text_content for p in posts]
     classifier = get_text_classifier()
-    results = classifier(post.text_content, truncation=True, top_k=None)
+    all_results: list[list[dict]] = classifier(texts, batch_size=batch_size)
 
-    target_label = settings.filter_target_label.upper()
+    passed: list[ProcessedPost] = []
+    for post, results in zip(posts, all_results):
+        # Build a label → score mapping from raw model output
+        dim_scores: dict[str, float] = {
+            str(r.get("label", "")).lower(): float(r.get("score", 0.0))
+            for r in results
+        }
 
-    score = 0.0
-    found = False
-    for r in results:
-        if str(r.get("label", "")).upper() == target_label:
-            score = float(r.get("score", 0.0))
-            found = True
-            break
-
-    if not found:
-        LOGGER.warning(
-            "FILTER_TARGET_LABEL=%r not found in classifier output labels %s. "
-            "All posts will be filtered out. Check FILTER_MODEL_NAME and FILTER_TARGET_LABEL.",
-            target_label,
-            [str(r.get("label", "")) for r in results],
+        compound = sum(
+            dim_scores.get(dim, 0.0) * weight
+            for dim, weight in TOXICITY_WEIGHTS.items()
         )
-        return None
 
-    if score < threshold:
-        return None
+        LOGGER.info(
+            "post_id=%s compound=%.4f dims=%s",
+            post.post_id,
+            compound,
+            {d: f"{dim_scores.get(d, 0.0):.3f}" for d in TOXICITY_WEIGHTS},
+        )
 
-    return ProcessedPost(**post.model_dump(), antisemitism_score=score)
+        # print(ProcessedPost(
+        #             **post.model_dump(),
+        #             antisemitism_score=round(compound, 6)
+        #         ), compound,
+        #     {d: f"{dim_scores.get(d, 0.0):.3f}" for d in TOXICITY_WEIGHTS})
+        print(post.text_content, compound, results)
+        if compound < threshold:
+            filtered_out += 1
+        else:
+            passed.append(
+                ProcessedPost(
+                    **post.model_dump(),
+                    antisemitism_score=round(compound, 6)
+                )
+            )
+
+    return passed, filtered_out
 
 
-def analyze_content(processed_post: ProcessedPost) -> ProcessedPost:
-    text = processed_post.text_content
+def analyze_content_batch(
+    posts: list[ProcessedPost],
+    label_threshold: float | None = None,
+    batch_size: int | None = None,
+) -> list[ProcessedPost]:
+    """Runs sentiment, zero-shot, and NER over a list."""
+    if not posts:
+        return posts
+    if batch_size is None:
+        batch_size = settings.ml_batch_size
 
-    try:
-        sentiment_classifier = get_sentiment_classifier()
-        sentiment_result = sentiment_classifier(text, truncation=True)[0]
-        raw_label = str(sentiment_result.get("label", "")).strip().upper()
-        processed_post.sentiment = SENTIMENT_LABEL_MAP.get(raw_label, "Neutral")
-    except Exception as exc:
-        LOGGER.exception("Sentiment analysis failed: %s", exc)
+    texts = [p.text_content for p in posts]
 
     try:
         zero_shot_classifier = get_zero_shot_classifier()
-        candidates = IHRA_LABELS + KEYWORD_LABELS
-        zero_shot_result = zero_shot_classifier(text, candidate_labels=candidates, multi_label=True)
+        candidates = IHRA_LABELS + KEYWORD_LABELS + SENTIMENT_LABELS
+        zero_shot_results = zero_shot_classifier(
+            texts, candidate_labels=candidates, multi_label=True, batch_size=batch_size
+        )
 
-        labels = zero_shot_result.get("labels", [])
-        scores = zero_shot_result.get("scores", [])
-        label_scores = dict(zip(labels, scores, strict=False))
+        if label_threshold is None:
+            label_threshold = settings.label_threshold
 
-        processed_post.ihra_labels = [
-            label for label in IHRA_LABELS if float(label_scores.get(label, 0.0)) >= 0.35
-        ]
+        for post, zs_result in zip(posts, zero_shot_results):
+            labels = zs_result.get("labels", [])
+            scores = zs_result.get("scores", [])
+            label_scores = dict(zip(labels, scores, strict=False))
 
-        merged_keywords = set(processed_post.keywords)
-        for keyword in KEYWORD_LABELS:
-            if float(label_scores.get(keyword, 0.0)) >= 0.35:
-                merged_keywords.add(keyword)
-        processed_post.keywords = sorted(merged_keywords)
+            post.ihra_labels = [
+                label for label in IHRA_LABELS if float(label_scores.get(label, 0.0)) >= label_threshold
+            ]
+
+            merged_keywords = set(post.keywords)
+            for keyword in KEYWORD_LABELS:
+                if float(label_scores.get(keyword, 0.0)) >= label_threshold:
+                    merged_keywords.add(keyword)
+            post.keywords = sorted(merged_keywords)
+
+            sentiment_scores = {s: float(label_scores.get(s, 0.0)) for s in SENTIMENT_LABELS}
+            post.sentiment = max(sentiment_scores, key=sentiment_scores.get)
+
     except Exception as exc:
-        LOGGER.exception("Zero-shot IHRA/keyword extraction failed: %s", exc)
+        LOGGER.exception("Batch zero-shot (IHRA/keywords/sentiment) failed: %s", exc)
 
+    # --- NER ---
     try:
         ner = get_ner_pipeline()
-        entities = ner(text)
-        country = None
-        for entity in entities:
-            entity_group = str(entity.get("entity_group", "")).upper()
-            if entity_group == "LOC":
-                word = str(entity.get("word", "")).strip()
-                if word:
-                    country = word
-                    break
-        processed_post.country_of_origin = country
+        # HF NER pipeline returns list[list[dict]] for list input
+        ner_results = ner(texts, batch_size=batch_size)
+        for post, entities in zip(posts, ner_results):
+            for entity in entities:
+                if str(entity.get("entity_group", "")).upper() == "LOC":
+                    word = str(entity.get("word", "")).strip()
+                    if word:
+                        post.country_of_origin = word
+                        break
     except Exception as exc:
-        LOGGER.exception("NER country extraction failed: %s", exc)
+        LOGGER.exception("Batch NER country extraction failed: %s", exc)
 
-    return processed_post
+    return posts
 
 
-def vectorize_text(processed_post: ProcessedPost) -> ProcessedPost:
+def vectorize_texts_batch(
+    posts: list[ProcessedPost],
+    batch_size: int | None = None,
+) -> list[ProcessedPost]:
+    """Batch version of vectorize_text — encodes all posts in a single encode() call."""
+    if not posts:
+        return posts
+    if batch_size is None:
+        batch_size = settings.ml_batch_size
+
     model = get_sentence_model()
-    vector = model.encode(processed_post.text_content)
-    processed_post.text_vector = [float(value) for value in vector.tolist()]
-    return processed_post
+    texts = [p.text_content for p in posts]
+    # SentenceTransformer.encode() natively supports batch_size
+    vectors = model.encode(texts, batch_size=batch_size, show_progress_bar=False)
+    for post, vector in zip(posts, vectors):
+        post.text_vector = [float(v) for v in vector.tolist()]
+    return posts
+
+

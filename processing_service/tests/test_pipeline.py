@@ -32,51 +32,59 @@ class TestPostModel:
             Post.model_validate({**SAMPLE_RAW_POST, "text_content": ""})
 
 
-class TestFilterPost:
+class TestFilterPostsBatch:
     @patch("services.ml_services.get_text_classifier")
     def test_high_score_returns_processed_post(self, mock_get_classifier):
-        mock_classifier = MagicMock(return_value=[{"label": "NEGATIVE", "score": 0.95}])
+        # HF pipeline returns list[list[dict]] for list input
+        mock_classifier = MagicMock(
+            return_value=[[{"label": "NEGATIVE", "score": 0.95}]]
+        )
         mock_get_classifier.return_value = mock_classifier
 
-        from services.ml_services import filter_post
+        from services.ml_services import filter_posts_batch
 
-        result = filter_post(SAMPLE_RAW_POST)
-        assert result is not None
-        assert isinstance(result, ProcessedPost)
-        assert result.antisemitism_score == pytest.approx(0.95)
+        passed, filtered_out = filter_posts_batch([SAMPLE_RAW_POST])
+        assert len(passed) == 1
+        assert filtered_out == 0
+        assert isinstance(passed[0], ProcessedPost)
+        assert passed[0].antisemitism_score == pytest.approx(0.95)
 
     @patch("services.ml_services.get_text_classifier")
-    def test_low_score_returns_none(self, mock_get_classifier):
-        mock_classifier = MagicMock(return_value=[{"label": "NEGATIVE", "score": 0.3}])
+    def test_low_score_filters_post(self, mock_get_classifier):
+        mock_classifier = MagicMock(
+            return_value=[[{"label": "NEGATIVE", "score": 0.3}]]
+        )
         mock_get_classifier.return_value = mock_classifier
 
-        from services.ml_services import filter_post
+        from services.ml_services import filter_posts_batch
 
-        result = filter_post(SAMPLE_RAW_POST)
-        assert result is None
+        passed, filtered_out = filter_posts_batch([SAMPLE_RAW_POST])
+        assert passed == []
+        assert filtered_out == 1
 
 
-class TestVectorizeText:
+class TestVectorizeTextsBatch:
     @patch("services.ml_services.get_sentence_model")
     def test_vector_populated(self, mock_get_model):
         import numpy as np
 
         mock_model = MagicMock()
-        mock_model.encode.return_value = np.zeros(384)
+        # encode() must return a 2-D array for batch input: shape (n_posts, dims)
+        mock_model.encode.return_value = np.zeros((1, 384))
         mock_get_model.return_value = mock_model
 
-        from services.ml_services import vectorize_text
+        from services.ml_services import vectorize_texts_batch
 
         post = ProcessedPost.model_validate(SAMPLE_RAW_POST)
-        result = vectorize_text(post)
-        assert len(result.text_vector) == 384
-        assert all(isinstance(v, float) for v in result.text_vector)
+        results = vectorize_texts_batch([post])
+        assert len(results[0].text_vector) == 384
+        assert all(isinstance(v, float) for v in results[0].text_vector)
 
 
 class TestPipelineOrchestration:
-    @patch("pipeline.vectorize.vectorize_text")
-    @patch("pipeline.vectorize.analyze_content")
-    @patch("pipeline.vectorize.filter_post")
+    @patch("pipeline.vectorize.vectorize_texts_batch")
+    @patch("pipeline.vectorize.analyze_content_batch")
+    @patch("pipeline.vectorize.filter_posts_batch")
     def test_full_pipeline_returns_processed_post(
         self,
         mock_filter,
@@ -87,12 +95,14 @@ class TestPipelineOrchestration:
 
         fake_post = ProcessedPost.model_validate(SAMPLE_RAW_POST)
         fake_post.antisemitism_score = 0.85
-        fake_post.sentiment = "negative"
+        fake_post.sentiment = "Hostile"  # valid SENTIMENT_LABELS value
         fake_post.text_vector = [0.0] * 384
 
-        mock_filter.return_value = fake_post
-        mock_analyze.return_value = fake_post
-        mock_vectorize.return_value = fake_post
+        # filter_posts_batch returns (list[ProcessedPost], filtered_out_count)
+        mock_filter.return_value = ([fake_post], 0)
+        # analyze/vectorize return list[ProcessedPost]
+        mock_analyze.return_value = [fake_post]
+        mock_vectorize.return_value = [fake_post]
 
         results, failed = vectorize([SAMPLE_RAW_POST])
         assert len(results) == 1
@@ -100,11 +110,12 @@ class TestPipelineOrchestration:
         assert results[0].antisemitism_score == pytest.approx(0.85)
         assert failed == 0
 
-    @patch("pipeline.vectorize.filter_post")
+    @patch("pipeline.vectorize.filter_posts_batch")
     def test_filtered_post_returns_empty(self, mock_filter):
         from pipeline.vectorize import vectorize
 
-        mock_filter.return_value = None
+        # All posts filtered out — passed=[], filtered_out=1
+        mock_filter.return_value = ([], 1)
         results, failed = vectorize([SAMPLE_RAW_POST])
         assert len(results) == 0
         assert failed == 0

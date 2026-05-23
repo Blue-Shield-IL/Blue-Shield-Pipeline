@@ -63,25 +63,24 @@ class Settings:
         default_factory=lambda: _float_env("TELEGRAM_REQUEST_TIMEOUT", "30")
     )
 
+    ml_batch_size: int = field(default_factory=lambda: _int_env("ML_BATCH_SIZE", "16"))
     # ML Models
     filter_model_name: str = field(
         default_factory=lambda: os.getenv(
-            "FILTER_MODEL_NAME", "distilbert-base-uncased-finetuned-sst-2-english"
+            "FILTER_MODEL_NAME", "IMSyPP/hate_speech_targets_nl"
         )
     )
     filter_target_label: str = field(
-        default_factory=lambda: os.getenv("FILTER_TARGET_LABEL", "NEGATIVE")
+        default_factory=lambda: os.getenv("FILTER_TARGET_LABEL", "negative")
     )
     filter_threshold: float = field(
-        default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.75"))
+        default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.45"))
+    )
+    label_threshold: float = field(
+        default_factory=lambda: float(os.getenv("LABEL_THRESHOLD", "0.5"))
     )
     sentence_model_name: str = field(
         default_factory=lambda: os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
-    )
-    sentiment_model_name: str = field(
-        default_factory=lambda: os.getenv(
-            "SENTIMENT_MODEL_NAME", "cardiffnlp/twitter-roberta-base-sentiment"
-        )
     )
     zero_shot_model_name: str = field(
         default_factory=lambda: os.getenv("ZERO_SHOT_MODEL_NAME", "facebook/bart-large-mnli")
