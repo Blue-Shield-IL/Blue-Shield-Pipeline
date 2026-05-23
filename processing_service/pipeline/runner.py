@@ -9,12 +9,11 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .ingest import ingest
+from .ingestion import ingest
 from .storage import ensure_posts_index, store_posts
-from .vectorize import vectorize
+from .enrichment import enrich_posts
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class JobResult:
@@ -26,14 +25,13 @@ class JobResult:
     duration_seconds: float
     sources: list[str]
     ingested: int = 0
-    vectorized: int = 0
-    vectorize_failures: int = 0
+    enriched: int = 0
+    enrich_failures: int = 0
     stored: int = 0
     errors: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
-
 
 class PipelineRunner:
     """Glue around the three pipeline steps.
@@ -70,7 +68,7 @@ class PipelineRunner:
         raw = ingest(self.sources, self.limit_per_source)
 
         # Step 2
-        enriched, vectorize_failures = vectorize(raw)
+        enriched, enrich_failures = enrich_posts(raw)
 
         # Step 3
         stored = 0
@@ -86,17 +84,17 @@ class PipelineRunner:
             duration_seconds=round(duration, 3),
             sources=self.sources,
             ingested=len(raw),
-            vectorized=len(enriched),
-            vectorize_failures=vectorize_failures,
+            enriched=len(enriched),
+            enrich_failures=enrich_failures,
             stored=stored,
             errors=errors,
         )
         logger.info(
-            "Pipeline job %s done in %.2fs: ingested=%d vectorized=%d stored=%d errors=%d",
+            "Pipeline job %s done in %.2fs: ingested=%d enriched=%d stored=%d errors=%d",
             job_id,
             duration,
             result.ingested,
-            result.vectorized,
+            result.enriched,
             result.stored,
             len(result.errors),
         )

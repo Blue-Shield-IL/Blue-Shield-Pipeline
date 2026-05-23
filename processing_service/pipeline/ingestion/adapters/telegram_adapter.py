@@ -63,7 +63,7 @@ class TelegramAdapter:
                 self.settings.telegram_session_file,
                 self.settings.telegram_api_id,
                 self.settings.telegram_api_hash,
-                timeout=self.settings.telegram_request_timeout,
+                timeout=self.settings.telegram_request_timeout
             )
         self._client.connect()
         self._supplier_entity = None
@@ -73,6 +73,23 @@ class TelegramAdapter:
             self._client.disconnect()
         self._supplier_entity = None
 
+    def _get_last_fetched_date(self) -> datetime | None:
+        import os, json
+        if os.path.exists("cursors/.telegram_cursor.json"):
+            try:
+                with open("cursors/.telegram_cursor.json", "r") as f:
+                    data = json.load(f)
+                    return datetime.fromisoformat(data["last_date"])
+            except Exception:
+                pass
+        return None
+
+    def _set_last_fetched_date(self, dt: datetime) -> None:
+        import os, json
+        os.makedirs("cursors", exist_ok=True)
+        with open("cursors/.telegram_cursor.json", "w") as f:
+            json.dump({"last_date": dt.isoformat()}, f)
+
     def fetch_recent(self, limit: int) -> list[TelegramRawPost]:
         if limit <= 0:
             return []
@@ -80,13 +97,28 @@ class TelegramAdapter:
             return []
 
         self.connect()
-        assert self._client is not None  # connect() guarantees this
         entity = self._resolve_supplier_entity()
+
+        last_date = self._get_last_fetched_date()
+        max_date_seen = None
         raw_posts: list[TelegramRawPost] = []
+
         for message in self._client.iter_messages(entity, limit=limit):
+            msg_date = self._coerce_datetime(getattr(message, "date", None))
+
+            if last_date and msg_date <= last_date:
+                break
+
+            if max_date_seen is None or msg_date > max_date_seen:
+                max_date_seen = msg_date
+
             normalized = self.normalize_message(message)
             if normalized.get("text_content", ""):
                 raw_posts.append(normalized)
+
+        if max_date_seen:
+            self._set_last_fetched_date(max_date_seen)
+
         return raw_posts
 
     def listen_forever(

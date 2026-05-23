@@ -62,3 +62,5 @@ Thumbs.db
 
 # ML model cache (large, downloaded at runtime)
 .cache/
+
+CLAUDE.md

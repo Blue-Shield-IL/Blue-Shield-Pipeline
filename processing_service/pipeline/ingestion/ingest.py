@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from .telegram_adapter import TelegramAdapter
+from .adapters.telegram_adapter import TelegramAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ RawPost = dict[str, Any]
 RawPostHandler = Callable[[RawPost], None]
 
 
-def fetch_telegram(limit: int = 10) -> list[RawPost]:
+def fetch_telegram(limit: int = 100) -> list[RawPost]:
     """Fetch a bounded batch of recent Telegram messages."""
     adapter = TelegramAdapter()
     try:

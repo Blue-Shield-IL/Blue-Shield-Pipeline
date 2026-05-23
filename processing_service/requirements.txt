@@ -6,9 +6,7 @@ python-dotenv>=1.0.0
 telethon>=1.36.0
 
 # ML / NLP
-transformers>=4.0
-torch>=2.0
-sentence-transformers>=2.2.0
+google-genai>=0.1.1
 
 # Testing
 pytest>=7.0.0

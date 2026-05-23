@@ -59,37 +59,23 @@ class Settings:
     telegram_startup_backfill_limit: int = field(
         default_factory=lambda: _int_env("TELEGRAM_STARTUP_BACKFILL_LIMIT", "100")
     )
-    telegram_request_timeout: float = field(
-        default_factory=lambda: _float_env("TELEGRAM_REQUEST_TIMEOUT", "30")
+    telegram_request_timeout: int = field(
+        default_factory=lambda: _int_env("TELEGRAM_REQUEST_TIMEOUT", "30")
     )
 
-    ml_batch_size: int = field(default_factory=lambda: _int_env("ML_BATCH_SIZE", "16"))
-    # ML Models
-    filter_model_name: str = field(
-        default_factory=lambda: os.getenv(
-            "FILTER_MODEL_NAME", "IMSyPP/hate_speech_targets_nl"
-        )
+    ml_batch_size: int = field(default_factory=lambda: _int_env("ML_BATCH_SIZE", "50"))
+    # ML Models (Gemini)
+    gemini_api_key: str = field(
+        default_factory=lambda: os.getenv("GEMINI_API_KEY", "")
     )
-    filter_target_label: str = field(
-        default_factory=lambda: os.getenv("FILTER_TARGET_LABEL", "negative")
+    gemini_model_name: str = field(
+        default_factory=lambda: os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+    )
+    gemini_embedding_model_name: str = field(
+        default_factory=lambda: os.getenv("GEMINI_EMBEDDING_MODEL_NAME", "gemini-embedding-2")
     )
     filter_threshold: float = field(
         default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.45"))
     )
-    label_threshold: float = field(
-        default_factory=lambda: float(os.getenv("LABEL_THRESHOLD", "0.5"))
-    )
-    sentence_model_name: str = field(
-        default_factory=lambda: os.getenv("SENTENCE_MODEL_NAME", "all-MiniLM-L6-v2")
-    )
-    zero_shot_model_name: str = field(
-        default_factory=lambda: os.getenv("ZERO_SHOT_MODEL_NAME", "facebook/bart-large-mnli")
-    )
-    ner_model_name: str = field(
-        default_factory=lambda: os.getenv(
-            "NER_MODEL_NAME", "dbmdz/bert-large-cased-finetuned-conll03-english"
-        )
-    )
-
 
 settings = Settings()
