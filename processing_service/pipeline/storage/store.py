@@ -8,7 +8,6 @@ from .adapters.elastic_adapter import ElasticsearchAdapter
 
 logger = logging.getLogger(__name__)
 
-# Global adapter instance
 elastic_adapter: ElasticsearchAdapter | None = None
 
 

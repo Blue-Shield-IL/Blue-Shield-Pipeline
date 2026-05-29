@@ -16,6 +16,7 @@ RawPostHandler = Callable[[RawPost], None]
 
 def fetch_telegram(limit: int = 100) -> list[RawPost]:
     """Fetch a bounded batch of recent Telegram messages."""
+
     adapter = TelegramAdapter()
     try:
         return adapter.fetch_recent(limit)

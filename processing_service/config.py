@@ -22,6 +22,10 @@ def _optional_int_env(name: str) -> int | None:
     raw = os.getenv(name)
     return int(raw) if raw else None
 
+def _list_env(name: str, default: str) -> list[str]:
+    raw = os.getenv(name, default)
+    return [x.strip() for x in raw.split(",")] if raw else []
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -36,7 +40,28 @@ class Settings:
         default_factory=lambda: _float_env("ELASTIC_REQUEST_TIMEOUT", "30")
     )
     embedding_dims: int = field(default_factory=lambda: _int_env("ELASTIC_EMBEDDING_DIMS", "384"))
-    telegram_enabled: bool = field(default_factory=lambda: _bool_env("TELEGRAM_ENABLED", "false"))
+
+    # Ingestion Core
+    ingestion_listeners: list[str] = field(
+        default_factory=lambda: _list_env("INGESTION_LISTENERS", "telegram")
+    )
+    ingestion_fetchers: list[str] = field(
+        default_factory=lambda: _list_env("INGESTION_FETCHERS", "")
+    )
+    cron_fetch_interval_seconds: int = field(
+        default_factory=lambda: _int_env("CRON_FETCH_INTERVAL_SECONDS", "3600")
+    )
+    flush_interval_sec: float = field(
+        default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "87.0")
+    )
+    token_limit: int = field(
+        default_factory=lambda: _int_env("TOKEN_LIMIT", "180000")
+    )
+    safe_char_limit: int = field(
+        default_factory=lambda: _int_env("SAFE_CHAR_LIMIT", "400000")
+    )
+
+    # Telegram
     telegram_api_id: int | None = field(
         default_factory=lambda: _optional_int_env("TELEGRAM_API_ID")
     )
@@ -46,18 +71,8 @@ class Settings:
     telegram_session_file: str = field(
         default_factory=lambda: os.getenv("TELEGRAM_SESSION_FILE", "telegram.session")
     )
-    telegram_supplier_channel: str | None = field(
-        default_factory=lambda: os.getenv("TELEGRAM_SUPPLIER_CHANNEL") or None
-    )
-    telegram_fetch_limit: int = field(
-        default_factory=lambda: _int_env("TELEGRAM_FETCH_LIMIT", "10")
-    )
-    telegram_batch_size: int = field(default_factory=lambda: _int_env("TELEGRAM_BATCH_SIZE", "50"))
-    telegram_flush_seconds: float = field(
-        default_factory=lambda: _float_env("TELEGRAM_FLUSH_SECONDS", "5")
-    )
-    telegram_startup_backfill_limit: int = field(
-        default_factory=lambda: _int_env("TELEGRAM_STARTUP_BACKFILL_LIMIT", "100")
+    telegram_supplier_channels: list[str] = field(
+        default_factory=lambda: _list_env("TELEGRAM_SUPPLIER_CHANNELS", "")
     )
     telegram_request_timeout: int = field(
         default_factory=lambda: _int_env("TELEGRAM_REQUEST_TIMEOUT", "30")

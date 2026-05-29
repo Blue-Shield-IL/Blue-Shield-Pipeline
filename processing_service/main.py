@@ -1,105 +1,84 @@
-from __future__ import annotations
-
+import asyncio
 import logging
-from contextlib import asynccontextmanager
-from typing import Any
-
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
+import sys
 
 from config import settings
-from pipeline import PipelineRunner
-from pipeline.storage import close_client, ensure_posts_index, get_client, ping
+from pipeline.ingestion.ingest import ingest_forever, ingest
+from pipeline.orchestrator import PipelineOrchestrator
+from pipeline.storage import ensure_posts_index, ping, close_client
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    stream=sys.stdout,
+)
 logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def cron_fetchers_stub(queue: asyncio.Queue, fetchers: list[str], interval_sec: int):
+    if not fetchers:
+        return
+    logger.info("Cron fetchers started for sources: %s", fetchers)
+    while True:
+        try:
+            posts = ingest(sources=fetchers, limit_per_source=50)
+            for post in posts:
+                await queue.put(post)
+        except Exception:
+            logger.exception("Cron fetcher failed")
+        
+        await asyncio.sleep(interval_sec)
+
+def start_listeners(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, listeners: list[str]):
+    if not listeners:
+        return
+    
+    def on_post(post):
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, post)
+        except Exception:
+            logger.exception("Failed to queue post")
+
+    logger.info("Starting listeners for sources: %s", listeners)
+    ingest_forever(sources=listeners, on_post=on_post)
+
+async def main():
+    logger.info("Initializing Blue Shield Processing Daemon...")
+
     try:
         if ping():
-            logger.info(
-                "Elasticsearch reachable; posts index %r %s",
-                settings.posts_index,
-                "created" if ensure_posts_index() else "already exists",
-            )
+            ensure_posts_index()
+            logger.info(f"Elasticsearch reachable; posts index {settings.posts_index!r} ensured.")
         else:
-            logger.warning(
-                "Elasticsearch not reachable at %s on startup; continuing without index bootstrap.",
-                settings.host,
-            )
+            logger.warning(f"Elasticsearch not reachable at {settings.host} on startup.")
     except Exception:
         logger.exception("Elasticsearch bootstrap failed")
 
-    yield
+    queue = asyncio.Queue()
 
-    close_client()
-
-
-app = FastAPI(
-    title="Blue Shield - Processing Service",
-    description="Scheduled ingestion, analysis, and storage pipeline.",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-
-@app.get("/")
-def read_root() -> dict[str, str]:
-    return {
-        "status": "Online",
-        "message": "Welcome to the 'Blue Shield' Processing Service",
-        "docs": "/docs",
-    }
-
-
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "healthy"}
-
-
-@app.get("/health/elastic")
-def elastic_health() -> dict[str, Any]:
-    try:
-        info = get_client().cluster.health()
-    except Exception as exc:
-        logger.warning("Elasticsearch health check failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Elasticsearch unreachable",
-        ) from exc
-    return {"host": settings.host, "index": settings.posts_index, "cluster": info.body}
-
-
-class RunJobRequest(BaseModel):
-    sources: list[str] = Field(
-        default=["telegram"],
-        description="Sources to ingest from. Defaults to ['telegram'].",
+    orchestrator = PipelineOrchestrator(queue=queue, flush_interval_sec=settings.flush_interval_sec)
+    orchestrator_task = asyncio.create_task(orchestrator.run_forever())
+    
+    cron_task = asyncio.create_task(
+        cron_fetchers_stub(queue, settings.ingestion_fetchers, settings.cron_fetch_interval_seconds)
     )
-    limit_per_source: int = Field(
-        default=10,
-        ge=1,
-        le=500,
-        description="Max posts to fetch per source. Defaults to 10.",
-    )
+    
+    loop = asyncio.get_running_loop()
+    listener_future = loop.run_in_executor(None, start_listeners, loop, queue, settings.ingestion_listeners)
 
-
-# Run the full pipeline once: ingest → vectorize → store.
-@app.post("/jobs/run", status_code=status.HTTP_200_OK)
-def run_job(body: RunJobRequest | None = None) -> dict[str, Any]:
-    req = body or RunJobRequest()
-    sources, limit = req.sources, req.limit_per_source
-
+    logger.info("Daemon is now running.")
+    
     try:
-        runner = PipelineRunner(sources=sources, limit_per_source=limit)
-        result = runner.run()
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Pipeline job failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Pipeline job failed. Check server logs for details.",
-        ) from exc
+        await asyncio.gather(orchestrator_task, cron_task, listener_future)
+    except asyncio.CancelledError:
+        logger.info("Daemon shutdown requested.")
+    finally:
+        close_client()
+        logger.info("Shutdown complete.")
 
-    return result.as_dict()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Exiting on Ctrl+C")

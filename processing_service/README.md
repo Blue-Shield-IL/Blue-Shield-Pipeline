@@ -15,8 +15,7 @@ Triggered via `POST /jobs/run` or a scheduled cron job — same code path.
 - Python 3.10+
 - FastAPI (health + job trigger)
 - Elasticsearch 9.x (posts + dense-vector embeddings + kNN search)
-- HuggingFace Transformers (text classification, sentiment, zero-shot, NER)
-- Sentence-Transformers (all-MiniLM-L6-v2 for embeddings)
+- Google API
 - Ruff (formatter + linter)
 
 ---
@@ -43,7 +42,6 @@ uvicorn main:app --reload
 
 On startup the service pings ES and creates the `posts` index if missing.
 
-Swagger UI: http://127.0.0.1:8000/docs
 
 ---
 
@@ -92,7 +90,6 @@ processing_service/
 │   ├── ingest.py          Step 1 — source fetchers (stub)
 │   ├── vectorize.py       Step 2 — orchestrates services/ml_services
 │   ├── storage.py         Step 3 — Elasticsearch persistence
-│   └── runner.py          PipelineRunner (used by cron + /jobs/run)
 ├── tests/
 │   ├── conftest.py
 │   ├── test_pipeline.py   Unit tests (mocked) + E2E test (real ML + ES)
@@ -116,22 +113,18 @@ processing_service/
 | `ELASTIC_CA_CERTS`       | —                              | Path to CA bundle (optional).    |
 | `ELASTIC_REQUEST_TIMEOUT`| `30`                           | Timeout in seconds.              |
 | `ELASTIC_EMBEDDING_DIMS` | `384`                          | Vector dimension.                |
+| `FLUSH_INTERVAL_SEC`     | `87.0`                         | Interval to flush the pipeline.  |
+| `TOKEN_LIMIT`            | `180000`                       | Limit for tokens per batch.      |
+| `SAFE_CHAR_LIMIT`        | `400000`                       | Character limit before API check.|
 | `TELEGRAM_ENABLED`       | `false`                        | Enables Telegram integration.    |
 | `TELEGRAM_API_ID`        |                                | Telegram app API ID.             |
 | `TELEGRAM_API_HASH`      |                                | Telegram app API hash.           |
 | `TELEGRAM_SESSION_FILE`  | `telegram.session`             | Local Telethon session file.     |
-| `TELEGRAM_SUPPLIER_CHANNEL` |                           | Telegram channel handle or link. |
-| `TELEGRAM_FETCH_LIMIT`   | `10`                           | Default batch fetch size.        |
-| `TELEGRAM_BATCH_SIZE`    | `50`                           | Reserved for listener batching.  |
-| `TELEGRAM_FLUSH_SECONDS` | `5`                            | Reserved listener flush window.  |
-| `TELEGRAM_STARTUP_BACKFILL_LIMIT` | `100`                 | Reserved startup backfill size.  |
+| `TELEGRAM_SUPPLIER_CHANNELS` |                            | Telegram channels (comma-separated). |
 | `TELEGRAM_REQUEST_TIMEOUT` | `30`                         | Telegram request timeout.        |
 | `FILTER_MODEL_NAME`      | `distilbert-base-uncased-finetuned-sst-2-english` | Binary classifier model. |
 | `FILTER_TARGET_LABEL`    | `NEGATIVE`                     | Label treated as flagged class (matches SST-2). |
 | `FILTER_THRESHOLD`       | `0.75`                         | Minimum score to pass the filter (0.0–1.0). |
-| `SENTENCE_MODEL_NAME`    | `all-MiniLM-L6-v2`             | Embedding model (384-dim).       |
-| `ZERO_SHOT_MODEL_NAME`   | `facebook/bart-large-mnli`     | Zero-shot for IHRA + keywords.   |
-| `NER_MODEL_NAME`         | `dbmdz/bert-large-cased-finetuned-conll03-english` | NER for country extraction. |
 
 ## Telegram Setup
 
@@ -157,8 +150,7 @@ TELEGRAM_ENABLED=true
 TELEGRAM_API_ID=12345678
 TELEGRAM_API_HASH=your_api_hash
 TELEGRAM_SESSION_FILE=telegram.session
-TELEGRAM_SUPPLIER_CHANNEL=@your_channel_or_t_me_link
-TELEGRAM_FETCH_LIMIT=10
+TELEGRAM_SUPPLIER_CHANNELS=@your_channel_or_t_me_link,@another_channel
 TELEGRAM_REQUEST_TIMEOUT=30
 ```
 
@@ -166,8 +158,8 @@ Notes:
 
 - `TELEGRAM_API_ID` should be numeric and should not be quoted.
 - `TELEGRAM_SESSION_FILE` is the local Telethon session file.
-- `TELEGRAM_SUPPLIER_CHANNEL` should be a resolvable public handle such as
-  `@channel_name`, a `https://t.me/...` link, or a private channel the
+- `TELEGRAM_SUPPLIER_CHANNELS` should be a comma-separated list of resolvable public handles such as
+  `@channel_name`, a `https://t.me/...` link, or private channels the
   authenticated account already has access to.
 
 ### 3. Create the Telegram session
@@ -192,18 +184,8 @@ What to expect:
 To fetch a bounded batch of recent messages:
 
 ```bash
-python -c "from pipeline.ingest import fetch_telegram; import json; print(json.dumps(fetch_telegram(5), indent=2, ensure_ascii=False))"
+python -c "from pipeline.ingestion.ingest import fetch_telegram; import json; print(json.dumps(fetch_telegram(5), indent=2, ensure_ascii=False))"
 ```
 
 This connects, fetches up to `5` recent messages from the configured supplier
 channel, prints them, and disconnects.
-
-### 5. Run the always-on listener
-
-To keep one Telegram connection open and print each new normalized message:
-
-```bash
-python listen_telegram.py
-```
-
-Stop it with `Ctrl+C`.

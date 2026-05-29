@@ -11,13 +11,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from config import Settings, settings
+from .base_adapter import BaseAdapter, RawPost
 
-TelegramRawPost = dict[str, Any]
+TelegramRawPost = RawPost
 
 try:
     from telethon import events
     from telethon.sync import TelegramClient
-except ImportError:  # pragma: no cover - exercised through runtime guard
+except ImportError:
     events = None
     TelegramClient = None
 
@@ -26,7 +27,7 @@ class TelegramConfigError(RuntimeError):
     """Raised when Telegram adapter runtime settings are incomplete."""
 
 
-class TelegramAdapter:
+class TelegramAdapter(BaseAdapter):
     """Thin wrapper around the Telegram client for supplier-channel reads."""
 
     def __init__(
@@ -38,11 +39,9 @@ class TelegramAdapter:
         self.settings = cfg
         self._client_factory = client_factory or TelegramClient
         self._client: Any | None = None
-        self._supplier_entity: Any | None = None
+        self._supplier_entities: list[Any] | None = None
 
     def validate_settings(self) -> None:
-        if not self.settings.telegram_enabled:
-            return
         if self._client_factory is None:
             raise TelegramConfigError(
                 "Telethon is not installed. Add the 'telethon' dependency before using Telegram."
@@ -51,9 +50,9 @@ class TelegramAdapter:
             raise TelegramConfigError("TELEGRAM_API_ID is required when Telegram is enabled.")
         if not self.settings.telegram_api_hash:
             raise TelegramConfigError("TELEGRAM_API_HASH is required when Telegram is enabled.")
-        if not self.settings.telegram_supplier_channel:
+        if not self.settings.telegram_supplier_channels:
             raise TelegramConfigError(
-                "TELEGRAM_SUPPLIER_CHANNEL is required when Telegram is enabled."
+                "TELEGRAM_SUPPLIER_CHANNELS is required when Telegram is enabled."
             )
 
     def connect(self) -> None:
@@ -66,12 +65,12 @@ class TelegramAdapter:
                 timeout=self.settings.telegram_request_timeout
             )
         self._client.connect()
-        self._supplier_entity = None
+        self._supplier_entities = None
 
     def disconnect(self) -> None:
         if self._client is not None:
             self._client.disconnect()
-        self._supplier_entity = None
+        self._supplier_entities = None
 
     def _get_last_fetched_date(self) -> datetime | None:
         import os, json
@@ -93,28 +92,27 @@ class TelegramAdapter:
     def fetch_recent(self, limit: int) -> list[TelegramRawPost]:
         if limit <= 0:
             return []
-        if not self.settings.telegram_enabled:
-            return []
 
         self.connect()
-        entity = self._resolve_supplier_entity()
+        entities = self._resolve_supplier_entities()
 
         last_date = self._get_last_fetched_date()
         max_date_seen = None
         raw_posts: list[TelegramRawPost] = []
 
-        for message in self._client.iter_messages(entity, limit=limit):
-            msg_date = self._coerce_datetime(getattr(message, "date", None))
+        for entity in entities:
+            for message in self._client.iter_messages(entity, limit=limit):
+                msg_date = self._coerce_datetime(getattr(message, "date", None))
 
-            if last_date and msg_date <= last_date:
-                break
+                if last_date and msg_date <= last_date:
+                    break
 
-            if max_date_seen is None or msg_date > max_date_seen:
-                max_date_seen = msg_date
+                if max_date_seen is None or msg_date > max_date_seen:
+                    max_date_seen = msg_date
 
-            normalized = self.normalize_message(message)
-            if normalized.get("text_content", ""):
-                raw_posts.append(normalized)
+                normalized = self.normalize_message(message)
+                if normalized.get("text_content", ""):
+                    raw_posts.append(normalized)
 
         if max_date_seen:
             self._set_last_fetched_date(max_date_seen)
@@ -128,25 +126,19 @@ class TelegramAdapter:
         max_messages: int | None = None,
     ) -> None:
         """Keep one Telegram connection open and stream supplier messages."""
-        if not self.settings.telegram_enabled:
-            return
         if events is None:
             raise TelegramConfigError(
                 "Telethon events are unavailable. Add the 'telethon' dependency before listening."
             )
 
         self.connect()
-        assert self._client is not None  # connect() guarantees this
-        entity = self._resolve_supplier_entity()
+        assert self._client is not None
+        entities = self._resolve_supplier_entities()
         seen_messages = 0
 
-        @self._client.on(events.NewMessage(chats=entity))
+        @self._client.on(events.NewMessage(chats=entities))
         async def _handle_new_message(event: Any) -> None:
-            nonlocal seen_messages
             on_message(self.normalize_message(event.message))
-            seen_messages += 1
-            if max_messages is not None and seen_messages >= max_messages:
-                await event.client.disconnect()
 
         self._client.run_until_disconnected()
 
@@ -161,10 +153,10 @@ class TelegramAdapter:
             "created_at": created_at.isoformat(),
         }
 
-    def _resolve_supplier_entity(self) -> Any:
-        if self._supplier_entity is None:
-            self._supplier_entity = self._client.get_entity(self.settings.telegram_supplier_channel)
-        return self._supplier_entity
+    def _resolve_supplier_entities(self) -> list[Any]:
+        if self._supplier_entities is None:
+            self._supplier_entities = [self._client.get_entity(c) for c in self.settings.telegram_supplier_channels]
+        return self._supplier_entities
 
     def _extract_text(self, message: Any) -> str:
         text = getattr(message, "message", None) or getattr(message, "text", None)
@@ -197,9 +189,6 @@ class TelegramAdapter:
             value = getattr(peer_id, attr, None)
             if value is not None:
                 return str(value)
-
-        if self.settings.telegram_supplier_channel:
-            return self.settings.telegram_supplier_channel
 
         return "unknown"
 
@@ -247,9 +236,6 @@ class TelegramAdapter:
         username = getattr(chat, "username", None)
         if username:
             return str(username)
-
-        if self.settings.telegram_supplier_channel:
-            return self.settings.telegram_supplier_channel
 
         return "unknown"
 

@@ -22,11 +22,9 @@ def enrich_posts(
     total_filtered_out = 0
     total_failed = 0
 
-    # We process in chunks to protect the LLM API from payload overload
     for chunk_start in range(0, len(raw_posts), batch_size):
         chunk = raw_posts[chunk_start: chunk_start + batch_size]
-        
-        # 1. Analyze (ML Inference)
+
         try:
             analyzed_chunk, validation_failures = analyze_content_batch(chunk)
             total_failed += validation_failures
@@ -44,7 +42,6 @@ def enrich_posts(
         if not analyzed_chunk:
             continue
 
-        # 2. Filter (Business Logic)
         try:
             passed, filtered_out = filter_posts_batch(analyzed_chunk)
             total_filtered_out += filtered_out
@@ -61,9 +58,7 @@ def enrich_posts(
         )
         return [], total_failed
 
-    # 3. Vectorize (Embeddings Inference)
     try:
-        # vectorize_texts_batch natively chunks to size 100 inside the gemini service
         all_passed = vectorize_texts_batch(all_passed)
     except Exception as exc:
         total_failed += len(all_passed)

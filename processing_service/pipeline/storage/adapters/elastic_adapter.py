@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 class ElasticsearchAdapter:
     """Wrapper class for Elasticsearch interactions."""
 
-    # Fields that should be mapped as `keyword` (exact match) instead of `text` (analyzed).
     _KEYWORD_FIELDS = {
         "post_id",
         "author",
@@ -63,7 +62,6 @@ class ElasticsearchAdapter:
         inner = cls._unwrap_optional(annotation)
         origin = get_origin(inner)
 
-        # list[float] → dense_vector
         if origin is list and get_args(inner) == (float,):
             return {
                 "type": "dense_vector",
@@ -72,15 +70,12 @@ class ElasticsearchAdapter:
                 "similarity": "cosine",
             }
 
-        # list[str] → keyword (multi-value)
         if origin is list and get_args(inner) == (str,):
             return {"type": "keyword"}
 
-        # Keyword override for specific fields
         if name in cls._KEYWORD_FIELDS:
             return {"type": "keyword"}
 
-        # Scalar types
         if inner is str:
             return {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 8192}}}
         if inner is int:
@@ -90,7 +85,6 @@ class ElasticsearchAdapter:
         if inner is datetime:
             return {"type": "date"}
 
-        # Fallback
         return {"type": "keyword"}
 
     @classmethod
@@ -117,7 +111,7 @@ class ElasticsearchAdapter:
         """Ensure the target index exists, creating it using the dynamically built mapping if not."""
         if self.client.indices.exists(index=index_name):
             return False
-        
+
         mapping = self.build_mapping(embedding_dims)
         try:
             self.client.indices.create(index=index_name, **mapping)

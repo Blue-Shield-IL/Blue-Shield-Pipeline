@@ -6,28 +6,9 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from config import settings
+from models.post_analysis import PostAnalysis
 
 LOGGER = logging.getLogger(__name__)
-
-
-class PostAnalysis(BaseModel):
-    antisemitism_score: float = Field(
-        description="A gradient score between 0.0 and 1.0 representing the confidence that the post contains "
-                    "antisemitism or justifies violence against Jews."
-    )
-    ihra_labels: list[str] = Field(
-        description="List of applicable IHRA antisemitism labels."
-    )
-    keywords: list[str] = Field(
-        description="List of applicable keyword labels (e.g., 'October 7th Hamas attack', 'blood libel')."
-    )
-    sentiment: str = Field(
-        description="The overall sentiment of the text. One of: Supportive, Neutral, Negative, Hostile."
-    )
-    country_of_origin: str | None = Field(
-        default=None,
-        description="The country or location mentioned as the origin/target if applicable. Null if none."
-    )
 
 
 class GeminiAdapter:
@@ -82,6 +63,7 @@ Here are the posts to analyze:
             if len(results) != len(texts):
                 LOGGER.error(f"Expected {len(texts)} results from Gemini, got {len(results)}. Padding/truncating.")
                 while len(results) < len(texts):
+                    LOGGER.warning(f"Padding result for post index {len(results)} with blank data due to Gemini omission.")
                     results.append(
                         PostAnalysis(
                             antisemitism_score=0.0,
@@ -97,6 +79,7 @@ Here are the posts to analyze:
 
         except Exception as e:
             LOGGER.exception(f"Gemini API analysis failed: {e}")
+            LOGGER.warning(f"Padding {len(texts)} posts with default neutral values due to API failure.")
             return [
                 PostAnalysis(
                     antisemitism_score=0.0,
@@ -131,12 +114,17 @@ Here are the posts to analyze:
                 LOGGER.exception(f"Gemini API embedding failed: {e}")
                 return [0.0] * self.embedding_dims
 
-        # Using a thread pool since the google-genai SDK embed_content
-        # doesn't natively batch multiple documents in a single request
-        # (passing a list of strings concatenates them into one embedding).
-
         all_embeddings = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             all_embeddings = list(executor.map(embed_one, texts))
 
         return all_embeddings
+
+    def count_tokens(self, text: str) -> int:
+        """Count the number of tokens in the given text using the Gemini model."""
+        try:
+            response = self.client.models.count_tokens(model=self.model, contents=text)
+            return response.total_tokens
+        except Exception as e:
+            LOGGER.exception(f"Gemini API count_tokens failed: {e}")
+            return len(text) // 4
