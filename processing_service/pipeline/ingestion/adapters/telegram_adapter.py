@@ -6,6 +6,7 @@ the Telegram fetch/listen ingestion entrypoints.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -14,6 +15,7 @@ from config import Settings, settings
 from .base_adapter import BaseAdapter, RawPost
 
 TelegramRawPost = RawPost
+logger = logging.getLogger(__name__)
 
 try:
     from telethon import events
@@ -155,7 +157,15 @@ class TelegramAdapter(BaseAdapter):
 
     def _resolve_supplier_entities(self) -> list[Any]:
         if self._supplier_entities is None:
-            self._supplier_entities = [self._client.get_entity(c) for c in self.settings.telegram_supplier_channels]
+            entities = []
+            for c in self.settings.telegram_supplier_channels:
+                try:
+                    entity = self._client.get_entity(c)
+                    entities.append(entity)
+                    logger.info(f"Successfully resolved Telegram channel: {c}")
+                except Exception as e:
+                    logger.error(f"Failed to resolve Telegram channel {c}: {e}")
+            self._supplier_entities = entities
         return self._supplier_entities
 
     def _extract_text(self, message: Any) -> str:
