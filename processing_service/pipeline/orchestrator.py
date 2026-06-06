@@ -92,8 +92,19 @@ class PipelineOrchestrator:
                 }))
         except Exception as e:
             duration = asyncio.get_running_loop().time() - flush_start
+            
+            requeued_count = 0
+            for post in batch_to_process:
+                retry_count = post.get("_retry_count", 0) + 1
+                if retry_count <= 2:
+                    post["_retry_count"] = retry_count
+                    self.buffer.append(post)
+                    requeued_count += 1
+            
             logger.exception(json.dumps({
                 "job_id": job_id,
                 "event": "error",
-                "duration_sec": round(duration, 2)
+                "duration_sec": round(duration, 2),
+                "requeued_for_retry": requeued_count,
+                "dropped": len(batch_to_process) - requeued_count
             }))

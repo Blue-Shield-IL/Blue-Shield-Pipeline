@@ -14,9 +14,11 @@ class Post(BaseModel):
     comments_count: int = 0
     views: int = 0
     hashtags: list[str] = Field(default_factory=list)
+    mentions: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     url: str | None = None
     language: str | None = None
+    channel: str | None = None
 
     @field_validator("post_id", "text_content")
     @classmethod

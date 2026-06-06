@@ -22,6 +22,7 @@ class ElasticsearchAdapter:
         "platform",
         "language",
         "url",
+        "channel",
         "sentiment",
         "country_of_origin",
     }

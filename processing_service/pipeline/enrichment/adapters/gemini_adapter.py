@@ -33,7 +33,7 @@ You are an expert hate-speech and geopolitical analyst.
 Analyze the following batch of social media posts.
 
 For each post, output a JSON object containing:
-- antisemitism_score: A float from 0.0 to 1.0 indicating if the text is antisemitic or justifies violence against Jews.
+- antisemitism_score: A float from 0.0 to 1.0 indicating if the text is antisemitic or justifies violence against Jews. IMPORTANT: Base your score strictly on the actual semantic topic and meaning of the text. Do not over-flag or give high scores merely because of the presence of specific punctuation, formatting (e.g., echo brackets like '(((' or ')))'), or specific author names if the text itself has no connection to Jews or antisemitism.
 - ihra_labels: A list of strings matching ONLY the following allowed IHRA labels:
 {json.dumps(ihra_labels, indent=2)}
 - keywords: A list of strings matching ONLY the following allowed keyword labels:
@@ -61,35 +61,13 @@ Here are the posts to analyze:
             results = [PostAnalysis(**res) for res in raw_results]
 
             if len(results) != len(texts):
-                LOGGER.error(f"Expected {len(texts)} results from Gemini, got {len(results)}. Padding/truncating.")
-                while len(results) < len(texts):
-                    LOGGER.warning(f"Padding result for post index {len(results)} with blank data due to Gemini omission.")
-                    results.append(
-                        PostAnalysis(
-                            antisemitism_score=0.0,
-                            ihra_labels=[],
-                            keywords=[],
-                            sentiment="Neutral",
-                            country_of_origin=None,
-                        )
-                    )
-                results = results[: len(texts)]
+                raise RuntimeError(f"Expected {len(texts)} results from Gemini, got {len(results)}.")
 
             return results
 
         except Exception as e:
             LOGGER.exception(f"Gemini API analysis failed: {e}")
-            LOGGER.warning(f"Padding {len(texts)} posts with default neutral values due to API failure.")
-            return [
-                PostAnalysis(
-                    antisemitism_score=0.0,
-                    ihra_labels=[],
-                    keywords=[],
-                    sentiment="Neutral",
-                    country_of_origin=None,
-                )
-                for _ in texts
-            ]
+            raise
 
     def vectorize_texts(self, texts: list[str]) -> list[list[float]]:
         """Get embeddings using Gemini model."""

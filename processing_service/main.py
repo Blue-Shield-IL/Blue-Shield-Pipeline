@@ -19,20 +19,22 @@ async def cron_fetchers_stub(queue: asyncio.Queue, fetchers: list[str], interval
     if not fetchers:
         return
     logger.info("Cron fetchers started for sources: %s", fetchers)
+    loop = asyncio.get_running_loop()
     while True:
         try:
-            posts = ingest(sources=fetchers, limit_per_source=50)
+            posts = await loop.run_in_executor(None, ingest, fetchers, 50)
             for post in posts:
                 await queue.put(post)
         except Exception:
             logger.exception("Cron fetcher failed")
-        
+
         await asyncio.sleep(interval_sec)
+
 
 def start_listeners(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, listeners: list[str]):
     if not listeners:
         return
-    
+
     def on_post(post):
         try:
             loop.call_soon_threadsafe(queue.put_nowait, post)
@@ -41,6 +43,7 @@ def start_listeners(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, liste
 
     logger.info("Starting listeners for sources: %s", listeners)
     ingest_forever(sources=listeners, on_post=on_post)
+
 
 async def main():
     logger.info("Initializing Blue Shield Processing Daemon...")
@@ -58,16 +61,16 @@ async def main():
 
     orchestrator = PipelineOrchestrator(queue=queue, flush_interval_sec=settings.flush_interval_sec)
     orchestrator_task = asyncio.create_task(orchestrator.run_forever())
-    
+
     cron_task = asyncio.create_task(
         cron_fetchers_stub(queue, settings.ingestion_fetchers, settings.cron_fetch_interval_seconds)
     )
-    
+
     loop = asyncio.get_running_loop()
     listener_future = loop.run_in_executor(None, start_listeners, loop, queue, settings.ingestion_listeners)
 
     logger.info("Daemon is now running.")
-    
+
     try:
         await asyncio.gather(orchestrator_task, cron_task, listener_future)
     except asyncio.CancelledError:

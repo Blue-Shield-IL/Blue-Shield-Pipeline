@@ -38,7 +38,6 @@ def analyze_content_batch(
 
     analyzed: list[ProcessedPost] = []
     for post, res in zip(posts, results):
-        print(res.antisemitism_score)
 
         pp = ProcessedPost(
             **post.model_dump(),

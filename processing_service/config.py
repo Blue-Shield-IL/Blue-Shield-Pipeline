@@ -43,7 +43,7 @@ class Settings:
 
     # Ingestion Core
     ingestion_listeners: list[str] = field(
-        default_factory=lambda: _list_env("INGESTION_LISTENERS", "telegram")
+        default_factory=lambda: _list_env("INGESTION_LISTENERS", "")
     )
     ingestion_fetchers: list[str] = field(
         default_factory=lambda: _list_env("INGESTION_FETCHERS", "")

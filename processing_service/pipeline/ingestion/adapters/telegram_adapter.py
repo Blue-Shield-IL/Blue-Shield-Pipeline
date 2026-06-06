@@ -145,13 +145,21 @@ class TelegramAdapter(BaseAdapter):
         self._client.run_until_disconnected()
 
     def normalize_message(self, message: Any) -> TelegramRawPost:
+        import re
         created_at = self._coerce_datetime(getattr(message, "date", None))
+        
+        text_content = self._extract_text(message)
+        hashtags = list(set(re.findall(r'#\w+', text_content)))
+        mentions = list(set(re.findall(r'@\w+', text_content)))
 
         return {
             "post_id": self._post_id(message),
-            "text_content": self._extract_text(message),
+            "text_content": text_content,
             "author": self._author_name(message),
+            "channel": self._channel_name(message),
             "platform": "telegram",
+            "hashtags": hashtags,
+            "mentions": mentions,
             "created_at": created_at.isoformat(),
         }
 
