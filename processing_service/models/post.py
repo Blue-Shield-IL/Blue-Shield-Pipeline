@@ -19,7 +19,8 @@ class Post(BaseModel):
     url: str | None = None
     language: str | None = None
     channel: str | None = None
-
+    author_phone: str | None = Field(default=None, exclude=True)
+    channel_description: str | None = Field(default=None, exclude=True)
     @field_validator("post_id", "text_content")
     @classmethod
     def field_must_be_non_empty(cls, value: str) -> str:
@@ -33,4 +34,4 @@ class ProcessedPost(Post):
     sentiment: str | None = None
     ihra_labels: list[str] = Field(default_factory=list)
     country_of_origin: str | None = None
-    text_vector: list[float] = Field(default_factory=list)
+    text_vector: list[float] | None = None

@@ -26,15 +26,22 @@ def analyze_content_batch(
         try:
             posts.append(Post.model_validate(rp))
         except Exception as exc:
-            LOGGER.warning("Post validation failed (skipping): %s", exc)
+            LOGGER.warning("Post validation failed (skipping)", extra={"error": str(exc)})
             validation_failures += 1
 
     if not posts:
         return [], validation_failures
 
-    texts = [p.text_content for p in posts]
+    contexts = [
+        {
+            "text": p.text_content,
+            "author_phone": p.author_phone,
+            "channel_description": p.channel_description
+        }
+        for p in posts
+    ]
 
-    results = gemini_adapter.analyze_posts(texts, IHRA_LABELS, KEYWORD_LABELS)
+    results = gemini_adapter.analyze_posts(contexts, IHRA_LABELS, KEYWORD_LABELS)
 
     analyzed: list[ProcessedPost] = []
     for post, res in zip(posts, results):
@@ -67,11 +74,7 @@ def filter_posts_batch(
     filtered_out = 0
 
     for post in analyzed_posts:
-        LOGGER.info(
-            "post_id=%s antisemitism_score=%.4f",
-            post.post_id,
-            post.antisemitism_score,
-        )
+        LOGGER.info("Analyzing post", extra={"payload": {"post_id": post.post_id, "antisemitism_score": post.antisemitism_score}})
 
         if post.antisemitism_score < threshold:
             filtered_out += 1
@@ -83,9 +86,6 @@ def filter_posts_batch(
 
 def vectorize_texts_batch(posts: list[ProcessedPost]) -> list[ProcessedPost]:
     """Batch version of vectorize_text using Gemini."""
-    if not posts:
-        return posts
-
     texts = [p.text_content for p in posts]
 
     vectors = gemini_adapter.vectorize_texts(texts)

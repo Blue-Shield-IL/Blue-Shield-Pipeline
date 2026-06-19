@@ -29,50 +29,35 @@ def enrich_posts(
             analyzed_chunk, validation_failures = analyze_content_batch(chunk)
             total_failed += validation_failures
         except Exception as exc:
-            total_failed += len(chunk)
-            logger.warning(
-                "Analysis stage failed for chunk %d–%d (%d posts skipped): %s",
-                chunk_start,
-                chunk_start + len(chunk),
-                len(chunk),
-                exc,
-            )
-            continue
+            logger.warning("Analyze stage failed for chunk",
+                           extra={"payload": {"chunk_start": chunk_start, "chunk_end": chunk_start + len(chunk)},
+                                  "error": str(exc)})
+            raise
 
         if not analyzed_chunk:
             continue
 
-        try:
-            passed, filtered_out = filter_posts_batch(analyzed_chunk)
-            total_filtered_out += filtered_out
-            all_passed.extend(passed)
-        except Exception as exc:
-            total_failed += len(analyzed_chunk)
-            logger.warning("Filter stage failed for chunk %d–%d: %s", chunk_start, chunk_start + len(chunk), exc)
-            continue
+        passed, filtered_out = filter_posts_batch(analyzed_chunk)
+        total_filtered_out += filtered_out
+        all_passed.extend(passed)
 
     if not all_passed:
-        logger.info(
-            "Enrichment complete: all %d posts were filtered out or failed at filter stage.",
-            len(raw_posts),
-        )
+        logger.info("Enrichment complete: all posts were filtered out or failed at filter stage",
+                    extra={"payload": {"total_posts": len(raw_posts)}})
         return [], total_failed
 
     try:
+        logger.info("Vectorize stage starting", extra={"payload": {"posts_count": len(all_passed)}})
         all_passed = vectorize_texts_batch(all_passed)
     except Exception as exc:
-        total_failed += len(all_passed)
-        logger.warning(
-            "Vectorize stage failed for all %d posts: %s", len(all_passed), exc
-        )
-        return [], total_failed
+        logger.warning("Vectorize stage failed. Saving without vectors.",
+                       extra={"payload": {"posts_count": len(all_passed)}, "error": str(exc)})
 
-    logger.info(
-        "Enrichment complete: processed=%d filtered_out=%d failed=%d total=%d",
-        len(all_passed),
-        total_filtered_out,
-        total_failed,
-        len(raw_posts),
-    )
+    logger.info("Enrichment complete", extra={"payload": {
+        "processed": len(all_passed),
+        "filtered_out": total_filtered_out,
+        "failed": total_failed,
+        "total": len(raw_posts)
+    }})
 
     return all_passed, total_failed

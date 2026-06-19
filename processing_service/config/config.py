@@ -22,6 +22,7 @@ def _optional_int_env(name: str) -> int | None:
     raw = os.getenv(name)
     return int(raw) if raw else None
 
+
 def _list_env(name: str, default: str) -> list[str]:
     raw = os.getenv(name, default)
     return [x.strip() for x in raw.split(",")] if raw else []
@@ -92,5 +93,6 @@ class Settings:
     filter_threshold: float = field(
         default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.45"))
     )
+
 
 settings = Settings()

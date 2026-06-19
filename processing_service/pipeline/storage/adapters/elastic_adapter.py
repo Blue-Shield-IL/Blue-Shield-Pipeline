@@ -105,7 +105,7 @@ class ElasticsearchAdapter:
             self.client.cluster.health()
             return True
         except Exception as exc:
-            logger.warning("Elasticsearch ping failed: %s", exc)
+            logger.warning("Elasticsearch ping failed", extra={"error": str(exc)})
             return False
 
     def ensure_index(self, index_name: str, embedding_dims: int) -> bool:
@@ -119,9 +119,9 @@ class ElasticsearchAdapter:
         except Exception as exc:
             if "resource_already_exists_exception" in str(exc):
                 return False
-            logger.exception("Failed to create index %r", index_name)
+            logger.error("Failed to create index", extra={"payload": {"index_name": index_name}, "error": str(exc)})
             raise
-        logger.info("Created index %r", index_name)
+        logger.info("Created index", extra={"payload": {"index_name": index_name}})
         return True
 
     def store_post(self, post: Post, index_name: str, refresh: bool = False) -> dict[str, Any]:
@@ -152,4 +152,8 @@ class ElasticsearchAdapter:
             raise_on_exception=False,
         )
 
-        return success, errors if isinstance(errors, list) else []
+        errors_list = errors if isinstance(errors, list) else []
+        for err in errors_list:
+            logger.error("Elasticsearch bulk index error", extra={"error": str(err)})
+
+        return success, errors_list

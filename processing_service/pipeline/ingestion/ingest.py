@@ -48,12 +48,12 @@ def ingest(sources: list[str], limit_per_source: int = 10) -> list[RawPost]:
     for source in sources:
         fetcher = FETCHERS.get(source)
         if fetcher is None:
-            logger.warning("Unknown source %r; skipping", source)
+            logger.warning("Unknown source; skipping", extra={"payload": {"source": source}})
             continue
         try:
             posts.extend(fetcher(limit_per_source))
-        except Exception:
-            logger.exception("Fetcher %r failed", source)
+        except Exception as e:
+            logger.error("Fetcher failed", extra={"payload": {"source": source}, "error": str(e)})
     return posts
 
 
@@ -62,9 +62,9 @@ def ingest_forever(sources: list[str], on_post: RawPostHandler) -> None:
     for source in sources:
         listener = LISTENERS.get(source)
         if listener is None:
-            logger.warning("Unknown source %r; skipping", source)
+            logger.warning("Unknown source; skipping", extra={"payload": {"source": source}})
             continue
         try:
             listener(on_post)
-        except Exception:
-            logger.exception("Listener %r failed", source)
+        except Exception as e:
+            logger.error("Listener failed", extra={"payload": {"source": source}, "error": str(e)})

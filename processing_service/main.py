@@ -2,16 +2,12 @@ import asyncio
 import logging
 import sys
 
-from config import settings
+from config import settings, setup_logging
 from pipeline.ingestion.ingest import ingest_forever, ingest
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.storage import ensure_posts_index, ping, close_client
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    stream=sys.stdout,
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -25,8 +21,8 @@ async def cron_fetchers_stub(queue: asyncio.Queue, fetchers: list[str], interval
             posts = await loop.run_in_executor(None, ingest, fetchers, 50)
             for post in posts:
                 await queue.put(post)
-        except Exception:
-            logger.exception("Cron fetcher failed")
+        except Exception as e:
+            logger.error("Cron fetcher failed", extra={"error": str(e)})
 
         await asyncio.sleep(interval_sec)
 
@@ -38,8 +34,8 @@ def start_listeners(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, liste
     def on_post(post):
         try:
             loop.call_soon_threadsafe(queue.put_nowait, post)
-        except Exception:
-            logger.exception("Failed to queue post")
+        except Exception as e:
+            logger.error("Failed to queue post", extra={"error": str(e)})
 
     logger.info("Starting listeners for sources: %s", listeners)
     ingest_forever(sources=listeners, on_post=on_post)
@@ -51,11 +47,11 @@ async def main():
     try:
         if ping():
             ensure_posts_index()
-            logger.info(f"Elasticsearch reachable; posts index {settings.posts_index!r} ensured.")
+            logger.info("Elasticsearch reachable", extra={"payload": {"index": settings.posts_index}})
         else:
-            logger.warning(f"Elasticsearch not reachable at {settings.host} on startup.")
-    except Exception:
-        logger.exception("Elasticsearch bootstrap failed")
+            logger.warning("Elasticsearch not reachable on startup", extra={"payload": {"host": settings.host}})
+    except Exception as e:
+        logger.error("Elasticsearch bootstrap failed", extra={"error": str(e)})
 
     queue = asyncio.Queue()
 

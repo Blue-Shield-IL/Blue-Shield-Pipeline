@@ -11,6 +11,7 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class PipelineOrchestrator:
     def __init__(self, queue: asyncio.Queue, flush_interval_sec: float = 87.0):
         self.queue = queue
@@ -35,8 +36,8 @@ class PipelineOrchestrator:
     async def _flush(self):
         job_id = str(uuid.uuid4())
         flush_start = asyncio.get_running_loop().time()
-        
-        logger.info(json.dumps({"job_id": job_id, "event": "flush_start", "posts": len(self.buffer)}))
+
+        logger.info("flush_start", extra={"payload": {"job_id": job_id, "posts": len(self.buffer)}})
 
         while self.buffer:
             combined_text = "\n".join([post.get("text_content", "") for post in self.buffer])
@@ -50,10 +51,10 @@ class PipelineOrchestrator:
             if tokens <= settings.token_limit:
                 break
 
-            logger.warning(json.dumps({"job_id": job_id, "event": "drop_batch", "tokens": tokens, "limit": settings.token_limit}))
-            
+            logger.warning("drop_batch", extra={"payload": {"job_id": job_id, "tokens": tokens, "limit": settings.token_limit}})
+
             token_per_char = tokens / max(len(combined_text), 1)
-            
+
             while self.buffer:
                 current_len = sum(len(p.get("text_content", "")) + 1 for p in self.buffer)
                 estimated_tokens = current_len * token_per_char
@@ -69,30 +70,28 @@ class PipelineOrchestrator:
 
         loop = asyncio.get_running_loop()
         try:
-            logger.info(json.dumps({"job_id": job_id, "event": "enriching", "posts": len(batch_to_process)}))
+            logger.info("enriching", extra={"payload": {"job_id": job_id, "posts": len(batch_to_process)}})
             enriched, enrich_failures = await loop.run_in_executor(None, enrich_posts, batch_to_process)
 
             if enriched:
                 stored, errors = await loop.run_in_executor(None, store_posts, enriched)
                 duration = asyncio.get_running_loop().time() - flush_start
-                logger.info(json.dumps({
+                logger.info("flush_complete", extra={"payload": {
                     "job_id": job_id,
-                    "event": "flush_complete",
                     "stored": stored,
                     "enrich_failures": enrich_failures,
                     "storage_errors": len(errors),
                     "duration_sec": round(duration, 2)
-                }))
+                }})
             else:
                 duration = asyncio.get_running_loop().time() - flush_start
-                logger.info(json.dumps({
+                logger.info("no_posts_passed", extra={"payload": {
                     "job_id": job_id,
-                    "event": "no_posts_passed",
                     "duration_sec": round(duration, 2)
-                }))
+                }})
         except Exception as e:
             duration = asyncio.get_running_loop().time() - flush_start
-            
+
             requeued_count = 0
             for post in batch_to_process:
                 retry_count = post.get("_retry_count", 0) + 1
@@ -100,11 +99,10 @@ class PipelineOrchestrator:
                     post["_retry_count"] = retry_count
                     self.buffer.append(post)
                     requeued_count += 1
-            
-            logger.exception(json.dumps({
+
+            logger.error("flush_error", extra={"payload": {
                 "job_id": job_id,
-                "event": "error",
                 "duration_sec": round(duration, 2),
                 "requeued_for_retry": requeued_count,
                 "dropped": len(batch_to_process) - requeued_count
-            }))
+            }, "error": str(e)})

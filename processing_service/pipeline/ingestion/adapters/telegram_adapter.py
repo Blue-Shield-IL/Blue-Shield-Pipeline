@@ -10,6 +10,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
+from telethon.tl.functions.channels import GetFullChannelRequest
 
 from config import Settings, settings
 from .base_adapter import BaseAdapter, RawPost
@@ -42,6 +43,7 @@ class TelegramAdapter(BaseAdapter):
         self._client_factory = client_factory or TelegramClient
         self._client: Any | None = None
         self._supplier_entities: list[Any] | None = None
+        self._channel_descriptions: dict[str, str] = {}
 
     def validate_settings(self) -> None:
         if self._client_factory is None:
@@ -147,10 +149,17 @@ class TelegramAdapter(BaseAdapter):
     def normalize_message(self, message: Any) -> TelegramRawPost:
         import re
         created_at = self._coerce_datetime(getattr(message, "date", None))
-        
+
         text_content = self._extract_text(message)
         hashtags = list(set(re.findall(r'#\w+', text_content)))
         mentions = list(set(re.findall(r'@\w+', text_content)))
+
+        print(message)
+        sender = getattr(message, "sender", None)
+        phone = getattr(sender, "phone", None)
+
+        chat_id = str(getattr(getattr(message, "chat", None), "id", ""))
+        channel_description = self._channel_descriptions.get(chat_id)
 
         return {
             "post_id": self._post_id(message),
@@ -161,18 +170,31 @@ class TelegramAdapter(BaseAdapter):
             "hashtags": hashtags,
             "mentions": mentions,
             "created_at": created_at.isoformat(),
+            "author_phone": f"+{phone}" if phone else None,
+            "channel_description": channel_description,
         }
 
     def _resolve_supplier_entities(self) -> list[Any]:
         if self._supplier_entities is None:
             entities = []
-            for c in self.settings.telegram_supplier_channels:
+            for channel in self.settings.telegram_supplier_channels:
                 try:
-                    entity = self._client.get_entity(c)
+                    entity = self._client.get_entity(channel)
                     entities.append(entity)
-                    logger.info(f"Successfully resolved Telegram channel: {c}")
+                    logger.info("Successfully resolved Telegram channel", extra={"payload": {"channel": channel}})
+
+                    if str(entity.id) not in self._channel_descriptions:
+                        try:
+                            full = self._client(GetFullChannelRequest(channel=entity))
+                            about = getattr(full.full_chat, "about", None)
+                            if about:
+                                self._channel_descriptions[str(entity.id)] = about
+                        except Exception as e:
+                            logger.warning("Could not fetch full channel info",
+                                           extra={"payload": {"channel": channel}, "error": str(e)})
                 except Exception as e:
-                    logger.error(f"Failed to resolve Telegram channel {c}: {e}")
+                    logger.error("Failed to resolve Telegram channel",
+                                 extra={"payload": {"channel": channel}, "error": str(e)})
             self._supplier_entities = entities
         return self._supplier_entities
 
