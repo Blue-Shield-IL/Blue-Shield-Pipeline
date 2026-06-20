@@ -3,12 +3,11 @@ import logging
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field
 
 from config import settings
 from models.post_analysis import PostAnalysis
 
-logger = logging.getlogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GeminiAdapter:
