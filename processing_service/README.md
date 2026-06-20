@@ -60,7 +60,7 @@ Key environment variables to configure:
 | `GEMINI_API_KEY`         | Your Gemini API key.             |
 | `INGESTION_LISTENERS`    | Comma-separated list of active listeners (e.g., `telegram`). |
 | `INGESTION_FETCHERS`     | Comma-separated list of active fetchers (e.g., `telegram`). |
-| `CRON_FETCH_INTERVAL_SECONDS`| How often fetchers run (default `3600`).|
+| `CRON_FETCH_INTERVAL_SECONDS`| How often fetchers run (default `60`).|
 
 See `config.py` for all available settings.
 

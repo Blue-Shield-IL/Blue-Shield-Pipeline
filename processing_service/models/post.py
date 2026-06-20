@@ -3,10 +3,25 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 
+class Author(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    username: str | None = None
+    phone: str | None = Field(default=None, exclude=True)
+
+
+class Channel(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    username: str | None = None
+    description: str | None = Field(default=None, exclude=True)
+
+
 class Post(BaseModel):
     post_id: str
     text_content: str
-    author: str
+    author: Author | None = None
+    channel: Channel | None = None
     platform: str
     created_at: datetime
     likes: int = 0
@@ -18,9 +33,7 @@ class Post(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     url: str | None = None
     language: str | None = None
-    channel: str | None = None
-    author_phone: str | None = Field(default=None, exclude=True)
-    channel_description: str | None = Field(default=None, exclude=True)
+
     @field_validator("post_id", "text_content")
     @classmethod
     def field_must_be_non_empty(cls, value: str) -> str:

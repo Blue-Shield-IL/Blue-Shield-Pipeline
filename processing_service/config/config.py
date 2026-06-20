@@ -50,7 +50,7 @@ class Settings:
         default_factory=lambda: _list_env("INGESTION_FETCHERS", "")
     )
     cron_fetch_interval_seconds: int = field(
-        default_factory=lambda: _int_env("CRON_FETCH_INTERVAL_SECONDS", "3600")
+        default_factory=lambda: _int_env("CRON_FETCH_INTERVAL_SECONDS", "60")
     )
     flush_interval_sec: float = field(
         default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "87.0")

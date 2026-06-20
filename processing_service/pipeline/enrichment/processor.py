@@ -32,14 +32,24 @@ def analyze_content_batch(
     if not posts:
         return [], validation_failures
 
-    contexts = [
-        {
-            "text": p.text_content,
-            "author_phone": p.author_phone,
-            "channel_description": p.channel_description
-        }
-        for p in posts
-    ]
+    contexts = []
+    for p in posts:
+        ctx = {"text": p.text_content}
+        if p.author:
+            if p.author.phone:
+                ctx["author_phone"] = p.author.phone
+            if p.author.name:
+                ctx["author_name"] = p.author.name
+            if p.author.username:
+                ctx["author_username"] = p.author.username
+        if p.channel:
+            if p.channel.description:
+                ctx["channel_description"] = p.channel.description
+            if p.channel.name:
+                ctx["channel_name"] = p.channel.name
+            if p.channel.username:
+                ctx["channel_username"] = p.channel.username
+        contexts.append(ctx)
 
     results = gemini_adapter.analyze_posts(contexts, IHRA_LABELS, KEYWORD_LABELS)
 

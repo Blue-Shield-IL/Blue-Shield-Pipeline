@@ -25,6 +25,9 @@ except ImportError:
     events = None
     TelegramClient = None
 
+_global_supplier_entities: list[Any] | None = None
+_global_channel_descriptions: dict[str, str] = {}
+
 
 class TelegramConfigError(RuntimeError):
     """Raised when Telegram adapter runtime settings are incomplete."""
@@ -42,8 +45,7 @@ class TelegramAdapter(BaseAdapter):
         self.settings = cfg
         self._client_factory = client_factory or TelegramClient
         self._client: Any | None = None
-        self._supplier_entities: list[Any] | None = None
-        self._channel_descriptions: dict[str, str] = {}
+        self._channel_descriptions = _global_channel_descriptions
 
     def validate_settings(self) -> None:
         if self._client_factory is None:
@@ -69,12 +71,10 @@ class TelegramAdapter(BaseAdapter):
                 timeout=self.settings.telegram_request_timeout
             )
         self._client.connect()
-        self._supplier_entities = None
 
     def disconnect(self) -> None:
         if self._client is not None:
             self._client.disconnect()
-        self._supplier_entities = None
 
     def _get_last_fetched_date(self) -> datetime | None:
         import os, json
@@ -154,28 +154,44 @@ class TelegramAdapter(BaseAdapter):
         hashtags = list(set(re.findall(r'#\w+', text_content)))
         mentions = list(set(re.findall(r'@\w+', text_content)))
 
-        print(message)
-        sender = getattr(message, "sender", None)
-        phone = getattr(sender, "phone", None)
+        author_info = self._extract_author_info(message)
+        channel_info = self._extract_channel_info(message)
 
-        chat_id = str(getattr(getattr(message, "chat", None), "id", ""))
+        chat_id = channel_info.get("id") or ""
         channel_description = self._channel_descriptions.get(chat_id)
+        channel_info["description"] = channel_description
+
+        views = getattr(message, "views", 0) or 0
+        shares = getattr(message, "forwards", 0) or 0
+
+        comments_count = 0
+        replies_obj = getattr(message, "replies", None)
+        if replies_obj and hasattr(replies_obj, "replies"):
+            comments_count = getattr(replies_obj, "replies", 0) or 0
+
+        likes = 0
+        reactions_obj = getattr(message, "reactions", None)
+        if reactions_obj and hasattr(reactions_obj, "results"):
+            likes = sum(getattr(r, "count", 0) for r in reactions_obj.results)
 
         return {
-            "post_id": self._post_id(message),
+            "post_id": self._post_id(message, channel_info),
             "text_content": text_content,
-            "author": self._author_name(message),
-            "channel": self._channel_name(message),
+            "author": author_info,
+            "channel": channel_info,
             "platform": "telegram",
             "hashtags": hashtags,
             "mentions": mentions,
             "created_at": created_at.isoformat(),
-            "author_phone": f"+{phone}" if phone else None,
-            "channel_description": channel_description,
+            "views": views,
+            "shares": shares,
+            "comments_count": comments_count,
+            "likes": likes,
         }
 
     def _resolve_supplier_entities(self) -> list[Any]:
-        if self._supplier_entities is None:
+        global _global_supplier_entities
+        if _global_supplier_entities is None:
             entities = []
             for channel in self.settings.telegram_supplier_channels:
                 try:
@@ -195,8 +211,8 @@ class TelegramAdapter(BaseAdapter):
                 except Exception as e:
                     logger.error("Failed to resolve Telegram channel",
                                  extra={"payload": {"channel": channel}, "error": str(e)})
-            self._supplier_entities = entities
-        return self._supplier_entities
+            _global_supplier_entities = entities
+        return _global_supplier_entities
 
     def _extract_text(self, message: Any) -> str:
         text = getattr(message, "message", None) or getattr(message, "text", None)
@@ -209,75 +225,91 @@ class TelegramAdapter(BaseAdapter):
         normalized = str(text).strip()
         return normalized
 
-    def _channel_name(self, message: Any) -> str:
+    def _extract_channel_info(self, message: Any) -> dict[str, str | None]:
         chat = getattr(message, "chat", None)
         peer_id = getattr(message, "peer_id", None)
 
-        username = getattr(chat, "username", None)
-        if username:
-            return f"@{username}"
+        channel_username = getattr(chat, "username", None)
+        if channel_username:
+            channel_username = str(channel_username)
 
-        title = getattr(chat, "title", None)
-        if title:
-            return str(title)
+        channel_name = getattr(chat, "title", None)
+        if channel_name:
+            channel_name = str(channel_name)
 
-        chat_id = getattr(chat, "id", None)
-        if chat_id is not None:
-            return str(chat_id)
+        channel_id = getattr(chat, "id", None)
+        if channel_id is not None:
+            channel_id = str(channel_id)
 
-        for attr in ("channel_id", "chat_id", "user_id"):
-            value = getattr(peer_id, attr, None)
-            if value is not None:
-                return str(value)
+        if not channel_id:
+            for attr in ("channel_id", "chat_id", "user_id"):
+                value = getattr(peer_id, attr, None)
+                if value is not None:
+                    channel_id = str(value)
+                    break
 
-        return "unknown"
+        return {
+            "id": channel_id,
+            "name": channel_name,
+            "username": channel_username
+        }
 
-    def _author_name(self, message: Any) -> str:
+    def _extract_author_info(self, message: Any) -> dict[str, str | None]:
         sender = getattr(message, "sender", None)
+        phone = getattr(sender, "phone", None) if sender else None
+        formatted_phone = f"+{phone}" if phone else None
 
-        username = getattr(sender, "username", None)
-        if username:
-            return f"@{username}"
+        author_id = None
+        author_name = None
+        author_username = None
 
-        first_name = getattr(sender, "first_name", None)
-        last_name = getattr(sender, "last_name", None)
-        full_name = " ".join(part for part in (first_name, last_name) if part)
-        if full_name:
-            return full_name
+        if sender:
+            author_username = getattr(sender, "username", None)
+            if author_username:
+                author_username = str(author_username)
+            author_id = getattr(sender, "id", None)
+            if author_id is not None:
+                author_id = str(author_id)
 
-        sender_id = getattr(sender, "id", None)
-        if sender_id is not None:
-            return str(sender_id)
+            first_name = getattr(sender, "first_name", None)
+            last_name = getattr(sender, "last_name", None)
+            full_name = " ".join(part for part in (first_name, last_name) if part)
+            if full_name:
+                author_name = full_name
 
-        return self._channel_name(message)
+        if not author_name and not author_username:
+            post_author = getattr(message, "post_author", None)
+            if post_author:
+                author_name = str(post_author)
 
-    def _post_id(self, message: Any) -> str:
-        chat_key = self._channel_key(message)
+        if not author_name and not author_username and not author_id:
+            fwd_from = getattr(message, "fwd_from", None)
+            if fwd_from:
+                from_name = getattr(fwd_from, "from_name", None)
+                if from_name:
+                    author_name = str(from_name)
+                else:
+                    from_id = getattr(fwd_from, "from_id", None)
+                    if from_id:
+                        user_id = getattr(from_id, "user_id", None)
+                        if user_id:
+                            author_id = str(user_id)
+
+        return {
+            "id": author_id,
+            "name": author_name,
+            "username": author_username,
+            "phone": formatted_phone
+        }
+
+    def _post_id(self, message: Any, channel_info: dict[str, str | None]) -> str:
+        chat_key = channel_info.get("id") or channel_info.get("username") or "unknown"
         message_id = getattr(message, "id", None)
         if message_id is not None:
             return f"telegram:{chat_key}:{message_id}"
 
         created_at = self._coerce_datetime(getattr(message, "date", None))
         return f"telegram:{chat_key}:{created_at.isoformat()}"
-
-    def _channel_key(self, message: Any) -> str:
-        chat = getattr(message, "chat", None)
-        peer_id = getattr(message, "peer_id", None)
-
-        chat_id = getattr(chat, "id", None)
-        if chat_id is not None:
-            return str(chat_id)
-
-        for attr in ("channel_id", "chat_id", "user_id"):
-            value = getattr(peer_id, attr, None)
-            if value is not None:
-                return str(value)
-
-        username = getattr(chat, "username", None)
-        if username:
-            return str(username)
-
-        return "unknown"
 
     def _coerce_datetime(self, value: Any) -> datetime:
         if isinstance(value, datetime):

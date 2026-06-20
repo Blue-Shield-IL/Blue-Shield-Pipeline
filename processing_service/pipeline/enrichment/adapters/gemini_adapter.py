@@ -40,7 +40,7 @@ For each post, output a JSON object containing:
 - sentiment: "Supportive", "Neutral", "Negative", or "Hostile".
 - country_of_origin: Infer the geographic origin of the post using the provided metadata.
   1. Phone number (if available) - use the country code.
-  2. Channel description (if available) - extract the location or primary country of focus.
+  2. Channel/Author Description or Name/Username (if available) - extract the location or primary country of focus.
   3. Language - if the text is in a country-specific language (e.g. German -> Germany, Farsi -> Iran), use it.
   4. Context - use slang, local events, or politicians mentioned to guess the country.
   Return null ONLY if it is completely impossible to infer the country.
@@ -51,6 +51,14 @@ Here are the posts to analyze:
             prompt += f"\n[POST {i}]\nText: {ctx['text']}\n"
             if ctx.get('author_phone'):
                 prompt += f"Author Phone: {ctx['author_phone']}\n"
+            if ctx.get('author_name'):
+                prompt += f"Author Name: {ctx['author_name']}\n"
+            if ctx.get('author_username'):
+                prompt += f"Author Username: {ctx['author_username']}\n"
+            if ctx.get('channel_name'):
+                prompt += f"Channel Name: {ctx['channel_name']}\n"
+            if ctx.get('channel_username'):
+                prompt += f"Channel Username: {ctx['channel_username']}\n"
             if ctx.get('channel_description'):
                 prompt += f"Channel Description: {ctx['channel_description']}\n"
 
