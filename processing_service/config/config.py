@@ -93,6 +93,19 @@ class Settings:
     filter_threshold: float = field(
         default_factory=lambda: float(os.getenv("FILTER_THRESHOLD", "0.45"))
     )
+    # Langfuse
+    langfuse_enabled: bool = field(
+        default_factory=lambda: _bool_env("LANGFUSE_ENABLED", "false")
+    )
+    langfuse_secret_key: str = field(
+        default_factory=lambda: os.getenv("LANGFUSE_SECRET_KEY", "")
+    )
+    langfuse_public_key: str = field(
+        default_factory=lambda: os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    )
+    langfuse_host: str = field(
+        default_factory=lambda: os.getenv("LANGFUSE_HOST", "")
+    )
 
 
 settings = Settings()

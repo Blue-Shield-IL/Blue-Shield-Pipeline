@@ -142,7 +142,12 @@ class TelegramAdapter(BaseAdapter):
 
         @self._client.on(events.NewMessage(chats=entities))
         async def _handle_new_message(event: Any) -> None:
-            on_message(self.normalize_message(event.message))
+            try:
+                logger.info("New message received from listener",
+                            extra={"payload": {"chat_id": str(getattr(event.message, "chat_id", "unknown"))}})
+                on_message(self.normalize_message(event.message))
+            except Exception as e:
+                logger.error("Failed to handle new message", extra={"error": str(e)})
 
         self._client.run_until_disconnected()
 

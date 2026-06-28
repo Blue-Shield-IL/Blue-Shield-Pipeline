@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import sys
-
-from config import settings, setup_logging
+from config import settings, setup_logging, init_langfuse, get_langfuse_client
 from pipeline.ingestion.ingest import ingest_forever, ingest
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.storage import ensure_posts_index, ping, close_client
@@ -18,7 +16,7 @@ async def cron_fetchers_stub(queue: asyncio.Queue, fetchers: list[str], interval
     loop = asyncio.get_running_loop()
     while True:
         try:
-            posts = await loop.run_in_executor(None, ingest, fetchers, 50)
+            posts = await loop.run_in_executor(None, ingest, fetchers)
             for post in posts:
                 await queue.put(post)
         except Exception as e:
@@ -43,6 +41,7 @@ def start_listeners(loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, liste
 
 async def main():
     logger.info("Initializing Blue Shield Processing Daemon...")
+    init_langfuse()
 
     try:
         if ping():
@@ -72,6 +71,9 @@ async def main():
     except asyncio.CancelledError:
         logger.info("Daemon shutdown requested.")
     finally:
+        client = get_langfuse_client()
+        if client is not None:
+            client.shutdown()
         close_client()
         logger.info("Shutdown complete.")
 

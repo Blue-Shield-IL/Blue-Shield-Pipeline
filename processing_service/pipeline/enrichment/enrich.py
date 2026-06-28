@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from langfuse import observe
+
 from config import settings
 from models import ProcessedPost
 from .processor import analyze_content_batch, filter_posts_batch, vectorize_texts_batch
@@ -10,6 +12,7 @@ from ..ingestion import RawPost
 logger = logging.getLogger(__name__)
 
 
+@observe(name="enrich_posts")
 def enrich_posts(
     raw_posts: list[RawPost],
     batch_size: int | None = None,

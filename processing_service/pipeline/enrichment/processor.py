@@ -1,6 +1,8 @@
 import logging
 from typing import Any
 
+from langfuse import observe
+
 from config import settings
 from consts.labels import IHRA_LABELS, KEYWORD_LABELS
 from models import Post, ProcessedPost
@@ -11,6 +13,7 @@ LOGGER = logging.getLogger(__name__)
 gemini_adapter = GeminiAdapter()
 
 
+@observe(name="analyze_content_batch")
 def analyze_content_batch(
     raw_posts: list[dict[str, Any]]
 ) -> tuple[list[ProcessedPost], int]:
@@ -69,6 +72,7 @@ def analyze_content_batch(
     return analyzed, validation_failures
 
 
+@observe(name="filter_posts_batch")
 def filter_posts_batch(
     analyzed_posts: list[ProcessedPost],
     threshold: float | None = None
@@ -94,6 +98,7 @@ def filter_posts_batch(
     return passed, filtered_out
 
 
+@observe(name="vectorize_texts_batch")
 def vectorize_texts_batch(posts: list[ProcessedPost]) -> list[ProcessedPost]:
     """Batch version of vectorize_text using Gemini."""
     texts = [p.text_content for p in posts]

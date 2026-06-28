@@ -14,7 +14,7 @@ RawPost = dict[str, Any]
 RawPostHandler = Callable[[RawPost], None]
 
 
-def fetch_telegram(limit: int = 100) -> list[RawPost]:
+def fetch_telegram(limit: int = 50) -> list[RawPost]:
     """Fetch a bounded batch of recent Telegram messages."""
     adapter = TelegramAdapter()
     try:
@@ -41,7 +41,7 @@ LISTENERS: dict[str, Any] = {
 }
 
 
-def ingest(sources: list[str], limit_per_source: int = 10) -> list[RawPost]:
+def ingest(sources: list[str], limit_per_source: int = 50) -> list[RawPost]:
     """Run fetchers for the requested sources. Unknown sources are skipped."""
     posts: list[RawPost] = []
     for source in sources:

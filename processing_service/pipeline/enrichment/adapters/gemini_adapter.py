@@ -3,8 +3,9 @@ import logging
 
 from google import genai
 from google.genai import types
+from langfuse import observe
 
-from config import settings
+from config import settings, get_langfuse_client
 from models.post_analysis import PostAnalysis
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class GeminiAdapter:
         self.embedding_model = settings.gemini_embedding_model_name
         self.embedding_dims = settings.embedding_dims
 
+    @observe(as_type="generation", name="gemini-analyze-posts", capture_input=False, capture_output=False)
     def analyze_posts(
         self, contexts: list[dict], ihra_labels: list[str], keyword_labels: list[str]
     ) -> list[PostAnalysis]:
@@ -73,6 +75,17 @@ Here are the posts to analyze:
                 ),
             )
 
+            usage = getattr(response, "usage_metadata", None)
+            get_langfuse_client().update_current_generation(
+                model=self.model,
+                input={"posts_count": len(contexts)},
+                output=response.text[:500],
+                usage_details={
+                    "input": getattr(usage, "prompt_token_count", 0),
+                    "output": getattr(usage, "candidates_token_count", 0),
+                },
+            )
+
             raw_results = json.loads(response.text)
             results = [PostAnalysis(**res) for res in raw_results]
 
@@ -85,6 +98,7 @@ Here are the posts to analyze:
             logger.error("Gemini API analysis failed", extra={"error": str(e)})
             raise
 
+    @observe(as_type="generation", name="gemini-vectorize-texts", capture_input=False, capture_output=False)
     def vectorize_texts(self, texts: list[str]) -> list[list[float] | None]:
         """Get embeddings using Gemini model sequentially."""
         if not texts:
@@ -107,8 +121,13 @@ Here are the posts to analyze:
                 except Exception as e:
                     logger.warning("Embedding failed for a text", extra={"error": str(e)})
 
+        get_langfuse_client().update_current_generation(
+            model=self.embedding_model,
+            input={"texts_count": len(texts)},
+        )
         return results
 
+    @observe(name="gemini-count-tokens", capture_input=False, capture_output=False)
     def count_tokens(self, text: str) -> int:
         """Count the number of tokens in the given text using the Gemini model."""
         try:

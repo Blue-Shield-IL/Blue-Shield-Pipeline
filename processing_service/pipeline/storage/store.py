@@ -2,6 +2,8 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
+from langfuse import observe
+
 from config import settings
 from models import Post
 from .adapters.elastic_adapter import ElasticsearchAdapter
@@ -46,6 +48,7 @@ def store_post(post: Post, *, index: str | None = None, refresh: bool = False) -
     return adapter.store_post(post, target, refresh)
 
 
+@observe(name="store_posts")
 def store_posts(
     posts: Iterable[Post], *, index: str | None = None, refresh: bool = False
 ) -> tuple[int, list]:

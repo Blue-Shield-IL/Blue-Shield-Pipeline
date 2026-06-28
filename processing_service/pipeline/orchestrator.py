@@ -1,8 +1,9 @@
 import asyncio
 import logging
-import json
 import uuid
 from typing import Any
+
+from langfuse import observe, propagate_attributes
 
 from .enrichment import enrich_posts
 from .enrichment.processor import count_tokens
@@ -33,9 +34,17 @@ class PipelineOrchestrator:
             sleep_time = max(0.0, self.flush_interval_sec - elapsed)
             await asyncio.sleep(sleep_time)
 
+    @observe(name="pipeline-flush", capture_input=False, capture_output=False)
     async def _flush(self):
         job_id = str(uuid.uuid4())
         flush_start = asyncio.get_running_loop().time()
+
+        with propagate_attributes(
+            session_id="pipeline",
+            metadata={"job_id": job_id, "batch_size": str(len(self.buffer))},
+            tags=["pipeline-flush"],
+        ):
+            pass
 
         logger.info("flush_start", extra={"payload": {"job_id": job_id, "posts": len(self.buffer)}})
 
