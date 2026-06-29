@@ -74,6 +74,12 @@ class ElasticsearchAdapter:
         if origin is list and get_args(inner) == (str,):
             return {"type": "keyword"}
 
+        if hasattr(inner, "model_fields"):
+            properties = {}
+            for k, v in inner.model_fields.items():
+                properties[k] = cls._annotation_to_es(k, v.annotation, embedding_dims)
+            return {"type": "object", "properties": properties}
+
         if name in cls._KEYWORD_FIELDS:
             return {"type": "keyword"}
 

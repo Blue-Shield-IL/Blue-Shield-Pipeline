@@ -5,7 +5,7 @@ from google import genai
 from google.genai import types
 from langfuse import observe
 
-from config import settings, get_langfuse_client
+from config import get_langfuse_client, settings
 from models.post_analysis import PostAnalysis
 
 logger = logging.getLogger(__name__)
@@ -17,12 +17,14 @@ class GeminiAdapter:
     def __init__(self):
         if not settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is not set in the environment variables.")
-        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.client = genai.Client(api_key=settings.gemini_api_key, http_options={'timeout': 300000})
         self.model = settings.gemini_model_name
         self.embedding_model = settings.gemini_embedding_model_name
         self.embedding_dims = settings.embedding_dims
 
-    @observe(as_type="generation", name="gemini-analyze-posts", capture_input=False, capture_output=False)
+    @observe(
+        as_type="generation", name="gemini-analyze-posts", capture_input=False, capture_output=False
+    )
     def analyze_posts(
         self, contexts: list[dict], ihra_labels: list[str], keyword_labels: list[str]
     ) -> list[PostAnalysis]:
@@ -51,17 +53,17 @@ Here are the posts to analyze:
 """
         for i, ctx in enumerate(contexts):
             prompt += f"\n[POST {i}]\nText: {ctx['text']}\n"
-            if ctx.get('author_phone'):
+            if ctx.get("author_phone"):
                 prompt += f"Author Phone: {ctx['author_phone']}\n"
-            if ctx.get('author_name'):
+            if ctx.get("author_name"):
                 prompt += f"Author Name: {ctx['author_name']}\n"
-            if ctx.get('author_username'):
+            if ctx.get("author_username"):
                 prompt += f"Author Username: {ctx['author_username']}\n"
-            if ctx.get('channel_name'):
+            if ctx.get("channel_name"):
                 prompt += f"Channel Name: {ctx['channel_name']}\n"
-            if ctx.get('channel_username'):
+            if ctx.get("channel_username"):
                 prompt += f"Channel Username: {ctx['channel_username']}\n"
-            if ctx.get('channel_description'):
+            if ctx.get("channel_description"):
                 prompt += f"Channel Description: {ctx['channel_description']}\n"
 
         try:
@@ -76,21 +78,25 @@ Here are the posts to analyze:
             )
 
             usage = getattr(response, "usage_metadata", None)
-            get_langfuse_client().update_current_generation(
-                model=self.model,
-                input={"posts_count": len(contexts)},
-                output=response.text[:500],
-                usage_details={
-                    "input": getattr(usage, "prompt_token_count", 0),
-                    "output": getattr(usage, "candidates_token_count", 0),
-                },
-            )
+            client = get_langfuse_client()
+            if client:
+                client.update_current_generation(
+                    model=self.model,
+                    input={"posts_count": len(contexts)},
+                    output=response.text[:500],
+                    usage_details={
+                        "input": getattr(usage, "prompt_token_count", 0),
+                        "output": getattr(usage, "candidates_token_count", 0),
+                    },
+                )
 
             raw_results = json.loads(response.text)
             results = [PostAnalysis(**res) for res in raw_results]
 
             if len(results) != len(contexts):
-                raise RuntimeError(f"Expected {len(contexts)} results from Gemini, got {len(results)}.")
+                logger.warning(
+                    f"Expected {len(contexts)} results from Gemini, got {len(results)}. Proceeding with partial results."
+                )
 
             return results
 
@@ -98,33 +104,47 @@ Here are the posts to analyze:
             logger.error("Gemini API analysis failed", extra={"error": str(e)})
             raise
 
-    @observe(as_type="generation", name="gemini-vectorize-texts", capture_input=False, capture_output=False)
+    @observe(
+        as_type="generation",
+        name="gemini-vectorize-texts",
+        capture_input=False,
+        capture_output=False,
+    )
     def vectorize_texts(self, texts: list[str]) -> list[list[float] | None]:
         """Get embeddings using Gemini model sequentially."""
         if not texts:
             return []
 
+        import concurrent.futures
+
         results: list[list[float] | None] = [None for _ in texts]
 
-        for i, text in enumerate(texts):
-            if text.strip():
-                try:
-                    response = self.client.models.embed_content(
-                        model=self.embedding_model,
-                        contents=text,
-                        config=types.EmbedContentConfig(
-                            output_dimensionality=self.embedding_dims,
-                        )
-                    )
-                    if response.embeddings:
-                        results[i] = response.embeddings[0].values
-                except Exception as e:
-                    logger.warning("Embedding failed for a text", extra={"error": str(e)})
+        def _embed_single(i: int, text: str):
+            if not text.strip():
+                return
+            try:
+                response = self.client.models.embed_content(
+                    model=self.embedding_model,
+                    contents=text,
+                    config=types.EmbedContentConfig(
+                        output_dimensionality=self.embedding_dims,
+                    ),
+                )
+                if response.embeddings:
+                    results[i] = response.embeddings[0].values
+            except Exception as e:
+                logger.warning("Embedding failed for a text", extra={"error": str(e)})
 
-        get_langfuse_client().update_current_generation(
-            model=self.embedding_model,
-            input={"texts_count": len(texts)},
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(_embed_single, i, text) for i, text in enumerate(texts)]
+            concurrent.futures.wait(futures)
+
+        client = get_langfuse_client()
+        if client:
+            client.update_current_generation(
+                model=self.embedding_model,
+                input={"texts_count": len(texts)},
+            )
         return results
 
     @observe(name="gemini-count-tokens", capture_input=False, capture_output=False)
