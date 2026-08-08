@@ -33,7 +33,7 @@ dmypy.json
 .venv/
 
 # Environment variables (secrets)
-.env
+processing_service/.env
 
 # Testing
 .pytest_cache/
@@ -62,3 +62,6 @@ Thumbs.db
 
 # ML model cache (large, downloaded at runtime)
 .cache/
+
+CLAUDE.md
+ARCHITECTURE.md

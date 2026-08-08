@@ -3,10 +3,25 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 
+class Author(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    username: str | None = None
+    phone: str | None = Field(default=None, exclude=True)
+
+
+class Channel(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    username: str | None = None
+    description: str | None = Field(default=None, exclude=True)
+
+
 class Post(BaseModel):
     post_id: str
     text_content: str
-    author: str
+    author: Author | None = None
+    channel: Channel | None = None
     platform: str
     created_at: datetime
     likes: int = 0
@@ -14,6 +29,7 @@ class Post(BaseModel):
     comments_count: int = 0
     views: int = 0
     hashtags: list[str] = Field(default_factory=list)
+    mentions: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     url: str | None = None
     language: str | None = None
@@ -31,4 +47,4 @@ class ProcessedPost(Post):
     sentiment: str | None = None
     ihra_labels: list[str] = Field(default_factory=list)
     country_of_origin: str | None = None
-    text_vector: list[float] = Field(default_factory=list)
+    text_vector: list[float] | None = None

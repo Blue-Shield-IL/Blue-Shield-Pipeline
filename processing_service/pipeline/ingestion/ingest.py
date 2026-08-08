@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from .telegram_adapter import TelegramAdapter
+from .adapters.telegram_adapter import TelegramAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ RawPost = dict[str, Any]
 RawPostHandler = Callable[[RawPost], None]
 
 
-def fetch_telegram(limit: int = 10) -> list[RawPost]:
+def fetch_telegram(limit: int = 50) -> list[RawPost]:
     """Fetch a bounded batch of recent Telegram messages."""
     adapter = TelegramAdapter()
     try:
@@ -41,18 +41,18 @@ LISTENERS: dict[str, Any] = {
 }
 
 
-def ingest(sources: list[str], limit_per_source: int = 10) -> list[RawPost]:
+def ingest(sources: list[str], limit_per_source: int = 25) -> list[RawPost]:
     """Run fetchers for the requested sources. Unknown sources are skipped."""
     posts: list[RawPost] = []
     for source in sources:
         fetcher = FETCHERS.get(source)
         if fetcher is None:
-            logger.warning("Unknown source %r; skipping", source)
+            logger.warning("Unknown source; skipping", extra={"payload": {"source": source}})
             continue
         try:
             posts.extend(fetcher(limit_per_source))
-        except Exception:
-            logger.exception("Fetcher %r failed", source)
+        except Exception as e:
+            logger.error("Fetcher failed", extra={"payload": {"source": source}, "error": str(e)})
     return posts
 
 
@@ -61,9 +61,9 @@ def ingest_forever(sources: list[str], on_post: RawPostHandler) -> None:
     for source in sources:
         listener = LISTENERS.get(source)
         if listener is None:
-            logger.warning("Unknown source %r; skipping", source)
+            logger.warning("Unknown source; skipping", extra={"payload": {"source": source}})
             continue
         try:
             listener(on_post)
-        except Exception:
-            logger.exception("Listener %r failed", source)
+        except Exception as e:
+            logger.error("Listener failed", extra={"payload": {"source": source}, "error": str(e)})
