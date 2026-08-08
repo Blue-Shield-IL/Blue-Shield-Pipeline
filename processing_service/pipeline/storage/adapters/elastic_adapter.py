@@ -18,11 +18,9 @@ class ElasticsearchAdapter:
 
     _KEYWORD_FIELDS = {
         "post_id",
-        "author",
         "platform",
         "language",
         "url",
-        "channel",
         "sentiment",
         "country_of_origin",
     }

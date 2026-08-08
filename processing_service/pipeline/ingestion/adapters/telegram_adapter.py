@@ -7,6 +7,8 @@ the Telegram fetch/listen ingestion entrypoints.
 from __future__ import annotations
 
 import logging
+import os
+import json
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -88,7 +90,6 @@ class TelegramAdapter(BaseAdapter):
         return None
 
     def _set_last_fetched_date(self, dt: datetime) -> None:
-        import os, json
         os.makedirs("cursors", exist_ok=True)
         with open("cursors/.telegram_cursor.json", "w") as f:
             json.dump({"last_date": dt.isoformat()}, f)
