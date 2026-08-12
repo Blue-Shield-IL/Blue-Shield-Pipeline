@@ -7,7 +7,7 @@ from models import Post, ProcessedPost
 SAMPLE_RAW_POST = {
     "post_id": "post-001",
     "text_content": "This is a test social media post about current events.",
-    "author": "user123",
+    "author": {"username": "user123"},
     "platform": "twitter",
     "created_at": "2026-05-05T12:00:00Z",
     "likes": 10,
@@ -68,12 +68,12 @@ class TestProcessor:
     def test_vectorize_texts_batch(self, mock_gemini):
         from pipeline.enrichment.processor import vectorize_texts_batch
         
-        mock_gemini.vectorize_texts.return_value = [[0.1] * 384]
-        
+        mock_gemini.vectorize_texts.return_value = [[0.1] * 768]
+
         post = ProcessedPost.model_validate({**SAMPLE_RAW_POST, "antisemitism_score": 0.95})
         result = vectorize_texts_batch([post])
         assert len(result) == 1
-        assert len(result[0].text_vector) == 384
+        assert len(result[0].text_vector) == 768
 
 @pytest.mark.integration
 class TestEndToEndWithElastic:
@@ -96,14 +96,14 @@ class TestEndToEndWithElastic:
             {
                 "post_id": "e2e-test-hostile-1",
                 "text_content": "Jews control the world banks and all media. Wake up!",
-                "author": "testuser",
+                "author": {"username": "testuser"},
                 "platform": "telegram",
                 "created_at": "2026-05-09T12:00:00Z",
             },
             {
                 "post_id": "e2e-test-neutral-1",
                 "text_content": "Beautiful sunny day at the beach with my family.",
-                "author": "happyuser",
+                "author": {"username": "happyuser"},
                 "platform": "telegram",
                 "created_at": "2026-05-09T12:02:00Z",
             },
@@ -125,4 +125,4 @@ class TestEndToEndWithElastic:
             src = doc["_source"]
             assert src["post_id"] == post.post_id
             assert "antisemitism_score" in src
-            assert len(src.get("text_vector", [])) == 384
+            assert len(src.get("text_vector", [])) == 768
