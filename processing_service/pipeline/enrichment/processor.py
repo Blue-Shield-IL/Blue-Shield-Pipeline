@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from langdetect import detect, LangDetectException
 from langfuse import observe
 
 from config import settings
@@ -11,6 +12,15 @@ from .adapters.gemini_adapter import GeminiAdapter
 LOGGER = logging.getLogger(__name__)
 
 gemini_adapter = GeminiAdapter()
+
+
+def _detect_language(text: str) -> str | None:
+    if not text or len(text.strip()) < 20:
+        return None
+    try:
+        return detect(text)
+    except LangDetectException:
+        return None
 
 
 @observe(name="analyze_content_batch")
@@ -67,6 +77,7 @@ def analyze_content_batch(
         pp.keywords = sorted(list(set(post.keywords + res.keywords)))
         pp.sentiment = res.sentiment
         pp.country_of_origin = res.country_of_origin
+        pp.language = _detect_language(post.text_content)
         analyzed.append(pp)
 
     return analyzed, validation_failures
@@ -78,8 +89,9 @@ def filter_posts_batch(
     threshold: float | None = None
 ) -> tuple[list[ProcessedPost], int]:
     """
-    Iterates through analyzed posts and drops any that fall below the antisemitism threshold.
-    Returns (passed_posts, filtered_out_count).
+    Drops posts that fall below the antisemitism threshold. Posts are kept when their content
+    contains hate-speech, antisemitism, or anti-Zionism — regardless of whether the author
+    endorses or condemns it. General neutral mentions of Jews/Israel are filtered out.
     """
     if threshold is None:
         threshold = settings.filter_threshold

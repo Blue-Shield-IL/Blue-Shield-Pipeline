@@ -18,7 +18,7 @@ HIGH_CONFIDENCE_POST = {
         "This is an absolutely wonderful and joyful event that everyone loves. "
         "The community came together in a fantastic celebration of unity and hope."
     ),
-    "author": "reporter99",
+    "author": {"username": "reporter99"},
     "platform": "twitter",
     "created_at": "2026-05-05T10:00:00Z",
 }
@@ -26,7 +26,7 @@ HIGH_CONFIDENCE_POST = {
 AMBIGUOUS_POST = {
     "post_id": "real-002",
     "text_content": "ok",
-    "author": "user_x",
+    "author": {"username": "user_x"},
     "platform": "facebook",
     "created_at": "2026-05-05T11:00:00Z",
 }
@@ -36,7 +36,7 @@ ANALYSIS_POST = {
     "text_content": (
         "Jewish people control the banks and media in Germany. #conspiracy #antisemitism"
     ),
-    "author": "badactor",
+    "author": {"username": "badactor"},
     "platform": "telegram",
     "created_at": "2026-05-05T09:00:00Z",
     "hashtags": ["#conspiracy", "#antisemitism"],
@@ -78,10 +78,10 @@ class TestRealFilterPostsBatch:
 
 
 class TestRealVectorizeTextsBatch:
-    def test_vector_is_384_dims(self):
+    def test_vector_is_768_dims(self):
         post = ProcessedPost.model_validate(HIGH_CONFIDENCE_POST)
         results = vectorize_texts_batch([post])
-        assert len(results[0].text_vector) == 384
+        assert len(results[0].text_vector) == 768
 
     def test_vector_values_are_floats(self):
         post = ProcessedPost.model_validate(HIGH_CONFIDENCE_POST)

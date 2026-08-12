@@ -32,22 +32,48 @@ class GeminiAdapter:
             return []
 
         prompt = f"""
-You are an expert hate-speech and geopolitical analyst.
+You are an expert hate-speech and geopolitical analyst specializing in antisemitism monitoring.
 Analyze the following batch of social media posts.
 
+Your goal is to identify content that contains hate-speech, antisemitism, or anti-Zionism. General news
+or neutral discussion about Jews, Judaism, or Israel that does NOT contain hateful, hostile, conspiratorial,
+or anti-Zionist content should receive a LOW antisemitism_score.
+
+IMPORTANT — these two fields measure two DIFFERENT things:
+- antisemitism_score measures how much the post contains HATE-SPEECH, ANTISEMITISM, or ANTI-ZIONISM.
+  Posts that merely mention Jews/Israel in a neutral or positive context (e.g. cultural events, tourism,
+  general politics, business news) should score LOW (0.0–0.2). Only posts that express, promote, report on,
+  or respond to antisemitic hate, conspiracy theories, anti-Zionist rhetoric, or violence against Jews should
+  score HIGH. The score does NOT depend on whether the author endorses or condemns the hate — a post reporting
+  on an antisemitic incident and a post celebrating it can both score high, because both contain antisemitic
+  content.
+- sentiment measures the AUTHOR'S OWN OPINION/STANCE — separate from the relevance score.
+
+Scoring guide:
+  0.0–0.2: No hate-speech or antisemitism. General mentions of Jews/Israel, cultural content, neutral news.
+  0.3–0.5: Mild or indirect — dog-whistles, borderline anti-Zionism, ambiguous hostility.
+  0.6–0.8: Clear antisemitic content — tropes, conspiracy theories, dehumanization, explicit anti-Zionism,
+           or reporting/condemning a specific antisemitic incident.
+  0.9–1.0: Extreme — calls for violence, Holocaust denial, explicit hate-speech targeting Jews.
+
 For each post, output a JSON object containing:
-- antisemitism_score: A float from 0.0 to 1.0 indicating if the text is antisemitic or justifies violence against Jews. IMPORTANT: Base your score strictly on the actual semantic topic and meaning of the text. Do not over-flag or give high scores merely because of the presence of specific punctuation, formatting (e.g., echo brackets like '(((' or ')))'), or specific author names if the text itself has no connection to Jews or antisemitism.
+- antisemitism_score: A float from 0.0 to 1.0 as described above. Base your score on the actual semantic
+  content of the text. Do not over-flag merely because of punctuation, formatting (e.g. echo brackets),
+  or author names if the text itself contains no hate-speech or antisemitism.
 - ihra_labels: A list of strings matching ONLY the following allowed IHRA labels:
 {json.dumps(ihra_labels, indent=2)}
 - keywords: A list of strings matching ONLY the following allowed keyword labels:
 {json.dumps(keyword_labels, indent=2)}
-- sentiment: "Supportive", "Neutral", "Negative", or "Hostile".
+- sentiment: The AUTHOR'S OWN stance/opinion toward Jews/Israel expressed in the text. One of:
+  "Supportive" (pro-Jewish/pro-Israel, or condemning/denouncing antisemitism), "Neutral" (no clear stance,
+  e.g. purely factual news reporting), "Negative" (critical or dismissive of Jews/Israel), "Hostile"
+  (antisemitic, endorses or celebrates violence against Jews, or promotes hateful tropes).
 - country_of_origin: Infer the geographic origin of the post using the provided metadata.
   1. Phone number (if available) - use the country code.
   2. Channel/Author Description or Name/Username (if available) - extract the location or primary country of focus.
   3. Language - if the text is in a country-specific language (e.g. German -> Germany, Farsi -> Iran), use it.
   4. Context - use slang, local events, or politicians mentioned to guess the country.
-  Return null ONLY if it is completely impossible to infer the country.
+  Return null ONLY if it is impossible to infer the country.
 
 Here are the posts to analyze:
 """
