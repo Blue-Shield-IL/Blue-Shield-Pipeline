@@ -41,7 +41,7 @@ LISTENERS: dict[str, Any] = {
 }
 
 
-def ingest(sources: list[str], limit_per_source: int = 25) -> list[RawPost]:
+def ingest(sources: list[str], limit_per_source: int = 5) -> list[RawPost]:
     """Run fetchers for the requested sources. Unknown sources are skipped."""
     posts: list[RawPost] = []
     for source in sources:

@@ -1,8 +1,10 @@
 import json
 import logging
+import time
 
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 from langfuse import observe
 
 from config import get_langfuse_client, settings
@@ -93,15 +95,26 @@ Here are the posts to analyze:
                 prompt += f"Channel Description: {ctx['channel_description']}\n"
 
         try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=list[PostAnalysis],
-                    temperature=0.0,
-                ),
-            )
+            for attempt in range(10):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=list[PostAnalysis],
+                            temperature=0.0,
+                        ),
+                    )
+                    break
+                except APIError as e:
+                    if e.code == 429:
+                        logger.warning(f"Rate limited by Gemini API (429). Sleeping for 60 seconds... (Attempt {attempt+1}/10)")
+                        time.sleep(60)
+                    else:
+                        raise
+            else:
+                raise Exception("Failed to call Gemini API after 10 retries due to rate limits.")
 
             usage = getattr(response, "usage_metadata", None)
             client = get_langfuse_client()
