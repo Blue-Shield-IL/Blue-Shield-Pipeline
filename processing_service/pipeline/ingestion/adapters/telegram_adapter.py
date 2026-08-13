@@ -106,18 +106,22 @@ class TelegramAdapter(BaseAdapter):
         raw_posts: list[TelegramRawPost] = []
 
         for entity in entities:
-            for message in self._client.iter_messages(entity, limit=limit):
-                msg_date = self._coerce_datetime(getattr(message, "date", None))
+            try:
+                for message in self._client.iter_messages(entity, limit=limit):
+                    msg_date = self._coerce_datetime(getattr(message, "date", None))
 
-                if last_date and msg_date <= last_date:
-                    break
+                    if last_date and msg_date <= last_date:
+                        break
 
-                if max_date_seen is None or msg_date > max_date_seen:
-                    max_date_seen = msg_date
+                    if max_date_seen is None or msg_date > max_date_seen:
+                        max_date_seen = msg_date
 
-                normalized = self.normalize_message(message)
-                if normalized.get("text_content", ""):
-                    raw_posts.append(normalized)
+                    normalized = self.normalize_message(message)
+                    if normalized.get("text_content", ""):
+                        raw_posts.append(normalized)
+            except Exception as e:
+                logger.warning(f"Failed to fetch messages from channel {getattr(entity, 'username', entity.id)}", extra={"error": str(e)})
+                continue
 
         if max_date_seen:
             self._set_last_fetched_date(max_date_seen)
