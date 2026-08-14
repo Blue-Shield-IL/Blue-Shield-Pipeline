@@ -6,9 +6,7 @@ the Telegram fetch/listen ingestion entrypoints.
 
 from __future__ import annotations
 
-import logging
-import os
-import json
+import logging, os, json, time, re
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -79,7 +77,6 @@ class TelegramAdapter(BaseAdapter):
             self._client.disconnect()
 
     def _get_last_fetched_date(self) -> datetime | None:
-        import os, json
         if os.path.exists("cursors/.telegram_cursor.json"):
             try:
                 with open("cursors/.telegram_cursor.json", "r") as f:
@@ -106,6 +103,7 @@ class TelegramAdapter(BaseAdapter):
         raw_posts: list[TelegramRawPost] = []
 
         for entity in entities:
+            time.sleep(1.5)
             for message in self._client.iter_messages(entity, limit=limit):
                 msg_date = self._coerce_datetime(getattr(message, "date", None))
 
@@ -153,7 +151,6 @@ class TelegramAdapter(BaseAdapter):
         self._client.run_until_disconnected()
 
     def normalize_message(self, message: Any) -> TelegramRawPost:
-        import re
         created_at = self._coerce_datetime(getattr(message, "date", None))
 
         text_content = self._extract_text(message)
@@ -195,10 +192,29 @@ class TelegramAdapter(BaseAdapter):
             "likes": likes,
         }
 
+    def _load_channel_cache(self) -> None:
+        cache_path = "cursors/.telegram_channels.json"
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    self._channel_descriptions.update(json.load(f))
+            except Exception:
+                pass
+
+    def _save_channel_cache(self) -> None:
+        os.makedirs("cursors", exist_ok=True)
+        try:
+            with open("cursors/.telegram_channels.json", "w", encoding="utf-8") as f:
+                json.dump(self._channel_descriptions, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     def _resolve_supplier_entities(self) -> list[Any]:
         global _global_supplier_entities
         if _global_supplier_entities is None:
+            self._load_channel_cache()
             entities = []
+            new_descriptions = False
             for channel in self.settings.telegram_supplier_channels:
                 try:
                     entity = self._client.get_entity(channel)
@@ -206,17 +222,22 @@ class TelegramAdapter(BaseAdapter):
                     logger.info("Successfully resolved Telegram channel", extra={"payload": {"channel": channel}})
 
                     if str(entity.id) not in self._channel_descriptions:
+                        time.sleep(1.5)
                         try:
                             full = self._client(GetFullChannelRequest(channel=entity))
                             about = getattr(full.full_chat, "about", None)
                             if about:
                                 self._channel_descriptions[str(entity.id)] = about
+                                new_descriptions = True
                         except Exception as e:
                             logger.warning("Could not fetch full channel info",
                                            extra={"payload": {"channel": channel}, "error": str(e)})
                 except Exception as e:
+                    print(f"Error resolving Telegram channel '{channel}': {e}")
                     logger.error("Failed to resolve Telegram channel",
                                  extra={"payload": {"channel": channel}, "error": str(e)})
+            if new_descriptions:
+                self._save_channel_cache()
             _global_supplier_entities = entities
         return _global_supplier_entities
 
