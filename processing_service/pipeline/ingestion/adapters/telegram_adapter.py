@@ -21,9 +21,11 @@ logger = logging.getLogger(__name__)
 try:
     from telethon import events
     from telethon.sync import TelegramClient
+    from telethon.tl.types import InputPeerChannel
 except ImportError:
     events = None
     TelegramClient = None
+    InputPeerChannel = None
 
 _global_supplier_entities: list[Any] | None = None
 _global_channel_descriptions: dict[str, str] = {}
@@ -192,53 +194,47 @@ class TelegramAdapter(BaseAdapter):
             "likes": likes,
         }
 
-    def _load_channel_cache(self) -> None:
+    def _load_channel_cache(self) -> dict[str, Any]:
         cache_path = "cursors/.telegram_channels.json"
         if os.path.exists(cache_path):
             try:
                 with open(cache_path, "r", encoding="utf-8") as f:
-                    self._channel_descriptions.update(json.load(f))
+                    return json.load(f)
             except Exception:
                 pass
-
-    def _save_channel_cache(self) -> None:
-        os.makedirs("cursors", exist_ok=True)
-        try:
-            with open("cursors/.telegram_channels.json", "w", encoding="utf-8") as f:
-                json.dump(self._channel_descriptions, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        return {}
 
     def _resolve_supplier_entities(self) -> list[Any]:
         global _global_supplier_entities
-        if _global_supplier_entities is None:
-            self._load_channel_cache()
-            entities = []
-            new_descriptions = False
-            for channel in self.settings.telegram_supplier_channels:
+        if _global_supplier_entities is not None:
+            return _global_supplier_entities
+
+        cache = self._load_channel_cache()
+        entities = []
+
+        for channel in self.settings.telegram_supplier_channels:
+            cached = cache.get(channel)
+            if cached and InputPeerChannel is not None:
+                peer = InputPeerChannel(
+                    channel_id=cached["id"],
+                    access_hash=cached["access_hash"],
+                )
+                entities.append(peer)
+                desc = cached.get("description")
+                if desc:
+                    self._channel_descriptions[str(cached["id"])] = desc
+                logger.info("Loaded channel from cache", extra={"payload": {"channel": channel}})
+            else:
                 try:
+                    time.sleep(1.5)
                     entity = self._client.get_entity(channel)
                     entities.append(entity)
-                    logger.info("Successfully resolved Telegram channel", extra={"payload": {"channel": channel}})
-
-                    if str(entity.id) not in self._channel_descriptions:
-                        time.sleep(1.5)
-                        try:
-                            full = self._client(GetFullChannelRequest(channel=entity))
-                            about = getattr(full.full_chat, "about", None)
-                            if about:
-                                self._channel_descriptions[str(entity.id)] = about
-                                new_descriptions = True
-                        except Exception as e:
-                            logger.warning("Could not fetch full channel info",
-                                           extra={"payload": {"channel": channel}, "error": str(e)})
+                    logger.info("Resolved Telegram channel via API", extra={"payload": {"channel": channel}})
                 except Exception as e:
-                    print(f"Error resolving Telegram channel '{channel}': {e}")
                     logger.error("Failed to resolve Telegram channel",
                                  extra={"payload": {"channel": channel}, "error": str(e)})
-            if new_descriptions:
-                self._save_channel_cache()
-            _global_supplier_entities = entities
+
+        _global_supplier_entities = entities
         return _global_supplier_entities
 
     def _extract_text(self, message: Any) -> str:
