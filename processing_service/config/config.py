@@ -53,7 +53,7 @@ class Settings:
         default_factory=lambda: _int_env("CRON_FETCH_INTERVAL_SECONDS", "60")
     )
     flush_interval_sec: float = field(
-        default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "60.0")
+        default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "80.0")
     )
     token_limit: int = field(
         default_factory=lambda: _int_env("TOKEN_LIMIT", "800000")
