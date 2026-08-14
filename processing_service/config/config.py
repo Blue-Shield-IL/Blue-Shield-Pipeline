@@ -53,13 +53,13 @@ class Settings:
         default_factory=lambda: _int_env("CRON_FETCH_INTERVAL_SECONDS", "60")
     )
     flush_interval_sec: float = field(
-        default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "87.0")
+        default_factory=lambda: _float_env("FLUSH_INTERVAL_SEC", "80.0")
     )
     token_limit: int = field(
-        default_factory=lambda: _int_env("TOKEN_LIMIT", "180000")
+        default_factory=lambda: _int_env("TOKEN_LIMIT", "800000")
     )
     safe_char_limit: int = field(
-        default_factory=lambda: _int_env("SAFE_CHAR_LIMIT", "400000")
+        default_factory=lambda: _int_env("SAFE_CHAR_LIMIT", "3000000")
     )
 
     # Telegram
@@ -85,7 +85,7 @@ class Settings:
         default_factory=lambda: os.getenv("GEMINI_API_KEY", "")
     )
     gemini_model_name: str = field(
-        default_factory=lambda: os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+        default_factory=lambda: os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
     )
     gemini_embedding_model_name: str = field(
         default_factory=lambda: os.getenv("GEMINI_EMBEDDING_MODEL_NAME", "gemini-embedding-2")
