@@ -40,7 +40,7 @@ class Settings:
     request_timeout: float = field(
         default_factory=lambda: _float_env("ELASTIC_REQUEST_TIMEOUT", "30")
     )
-    embedding_dims: int = field(default_factory=lambda: _int_env("ELASTIC_EMBEDDING_DIMS", "384"))
+    embedding_dims: int = field(default_factory=lambda: _int_env("ELASTIC_EMBEDDING_DIMS", "768"))
 
     # Ingestion Core
     ingestion_listeners: list[str] = field(
