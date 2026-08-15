@@ -16,8 +16,9 @@ class PostAnalysis(BaseModel):
     sentiment: str = Field(
         description="The author's own opinion/stance toward Jews/Israel as expressed in the text. One of: "
                     "Supportive (pro-Jewish/pro-Israel or condemning antisemitism), Neutral (no clear stance, "
-                    "e.g. pure news reporting), Negative (critical or dismissive), Hostile (antisemitic, "
-                    "endorses violence, or promotes hateful tropes)."
+                    "e.g. pure news reporting), Negative (critical, dismissive, conspiracy theories, tropes, "
+                    "dehumanization, inflammatory rhetoric), Hostile (ONLY explicit calls for violence, "
+                    "direct threats, or endorsing genocide/ethnic cleansing of Jews — should be rare)."
     )
     country_of_origin: str | None = Field(
         default=None,
