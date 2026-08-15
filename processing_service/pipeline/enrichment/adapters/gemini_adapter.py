@@ -31,34 +31,37 @@ class GeminiAdapter:
 RULES (follow strictly):
 
 R1-SCORE: antisemitism_score = relevance to antisemitism/anti-Zionism (0.0–1.0), based on CONTENT, not author intent.
-  0.0–0.2: No relevance. Cultural, tech, neutral news about Jews/Israel.
-  0.3–0.4: Mild. Dog-whistles, coded language, ambiguous.
-  0.5–0.6: Relevant. Anti-Zionist framing, delegitimization, reporting on antisemitic incidents.
+  0.0–0.2: No relevance. Tech, sports, weather, cultural content with no Israel/conflict framing.
+  0.3–0.4: Low. Factual conflict reporting WITHOUT editorial framing or loaded terms.
+  0.5–0.6: Relevant. Anti-Zionist framing, loaded language ("occupation", "massacre", "genocide"), one-sided war reporting designed to generate anti-Israel sentiment, reporting on antisemitic incidents.
   0.7–0.8: High. Tropes, conspiracy theories, dehumanization, glorifying armed resistance against Israel.
   0.9–1.0: Extreme. Calls for violence, Holocaust denial, explicit hate-speech.
 
 R2-SENTIMENT: the author's stance toward Jews/Israel. Choose one:
   "Supportive" = defends Jews/Israel, condemns antisemitism.
-  "Neutral" = factual, no stance.
-  "Negative" = critical, hostile rhetoric, tropes, delegitimization, celebrating anti-Israel violence.
+  "Neutral" = balanced factual reporting with no editorial framing. Use ONLY for truly objective reporting.
+  "Negative" = any anti-Israel framing, loaded language, one-sided reporting, delegitimization, tropes, celebrating anti-Israel violence.
   "Hostile" = ONLY explicit calls for violence/genocide. Rare.
 
 R3-DECISION RULES (override general scoring when they apply):
   - Celebratory tone toward anti-Israel armed groups (Hezbollah, Hamas, etc.) or "resistance" = Negative sentiment, score >= 0.6. NEVER Supportive.
-  - "Zionist enemy", "Zionist entity", "Zionist project" = delegitimization, score >= 0.6.
-  - Coded references to Jews ("them", "those people", "the tribe", "goyim") with negative context = score >= 0.5.
+  - "Zionist enemy", "Zionist entity", "Zionist project", "occupation forces", "Israeli enemy" = delegitimization, score >= 0.5, Negative.
+  - War reporting with loaded terms ("massacre", "martyrs", "genocide", "terrorist Israel") = score >= 0.5, Negative. These are NOT neutral.
+  - Showing civilian casualties with anti-Israel framing (dead children, destroyed homes) = score >= 0.5, Negative.
+  - Coded references to Jews ("them", "those people", "the tribe", "goyim", "goy") with negative context = score >= 0.6.
   - Comparing Israeli leaders to Nazis/terrorists or vice versa = score >= 0.5, Negative.
   - Reporting on antisemitic incidents (attacks, vandalism, hate crimes) = score 0.5–0.6, Neutral sentiment.
   - Conspiracy framing ("Israel played the X card", "Jewish lobby controls") = score >= 0.6.
-  - Post mentions Jews/Israel only in passing with no antisemitic content = score 0.0–0.2.
+  - Unverified or exaggerated claims against Israel (inflated casualty numbers, fabricated atrocities, unsubstantiated accusations) = score >= 0.6, Negative. Disinformation designed to demonize Israel is antisemitic content.
+  - ONLY score 0.0–0.2 if the post is about tech, culture, sports, or mentions Israel/Jews without ANY conflict, criticism, or loaded framing.
   - Do NOT lower score just because tone is calm, academic, or celebratory.
   - Do NOT raise score based on punctuation, formatting, or author names alone.
 
-R4-COUNTRY: where the antisemitism/anti-Zionism originates from, NOT the topic country.
-  1. Antisemitic/Anti-Zionist Author nationality/location stated in text → that country.
-  2. Antisemitic activity happens in a specific place → that country.
-  3. Metadata (phone code, channel location) as weak signal.
-  null if unclear. Never guess from topic alone.
+R4-COUNTRY: where the antisemitism/anti-Zionism originates from. NOT the country being discussed or criticized.
+  1. Author nationality/location explicitly stated in text → that country.
+  2. A specific antisemitic incident happens in a named place (e.g. attack on synagogue in France) → that country.
+  3. Metadata (phone code, channel location) as weak signal only.
+  null in ALL other cases. Do not confuse the country being discussed with the country of origin. Countries merely mentioned or criticized in the post are NOT automatically the origin.
 
 OUTPUT: ihra_labels from ONLY: {json.dumps(ihra_labels)}
 keywords from ONLY: {json.dumps(keyword_labels)}"""
@@ -131,6 +134,9 @@ keywords from ONLY: {json.dumps(keyword_labels)}"""
                         "output": getattr(usage, "candidates_token_count", 0),
                     },
                 )
+
+            if not response.text:
+                raise ValueError(f"Gemini returned empty response (finish_reason={getattr(response.candidates[0], 'finish_reason', 'unknown') if response.candidates else 'no_candidates'})")
 
             raw_results = json.loads(response.text)
             results = [PostAnalysis(**res) for res in raw_results]
