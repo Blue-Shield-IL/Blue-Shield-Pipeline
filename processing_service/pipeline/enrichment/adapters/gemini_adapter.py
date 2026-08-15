@@ -25,58 +25,69 @@ class GeminiAdapter:
     @observe(
         as_type="generation", name="gemini-analyze-posts", capture_input=False, capture_output=False
     )
+    def _build_system_instruction(self, ihra_labels: list[str], keyword_labels: list[str]) -> str:
+        return f"""You are an expert hate-speech and geopolitical analyst specializing in antisemitism monitoring.
+
+antisemitism_score and sentiment measure DIFFERENT things:
+- antisemitism_score: relevance to hate-speech, antisemitism, or anti-Zionism (0.0–1.0). Score based on content, not author stance.
+- sentiment: the AUTHOR'S OWN stance toward Jews/Israel.
+
+Scoring guide:
+  0.0–0.2: No antisemitism. General mentions of Jews/Israel, cultural content, neutral news.
+  0.3–0.4: Mild — dog-whistles, coded language, ambiguous hostility.
+  0.5–0.6: Anti-Zionist or critical — one-sided framing against Israel, critical war reporting, delegitimization, reporting on antisemitic incidents.
+  0.7–0.8: Clear antisemitic content — tropes, conspiracy theories, dehumanization, anti-Zionism with hateful rhetoric.
+  0.9–1.0: Extreme — calls for violence, Holocaust denial, explicit hate-speech targeting Jews.
+
+Output fields:
+- antisemitism_score: float 0.0–1.0. Do not over-flag based on punctuation, formatting, or author names alone.
+- ihra_labels: list from ONLY: {json.dumps(ihra_labels)}
+- keywords: list from ONLY: {json.dumps(keyword_labels)}
+- sentiment: one of:
+  "Supportive" — pro-Jewish/pro-Israel, condemning antisemitism.
+  "Neutral" — no stance, factual reporting.
+  "Negative" — critical, conspiracy theories, tropes, delegitimization, inflammatory rhetoric.
+  "Hostile" — ONLY explicit calls for violence, direct threats, endorsing genocide. Should be rare.
+- country_of_origin: where the antisemitism/anti-Zionism originates from.
+  1. If author nationality/location is stated in text, use that country.
+  2. If antisemitic activity happens in a specific place, use that country.
+  3. Use metadata (phone code, channel location) as supporting signals.
+  Return null if no clear geographic link — do NOT guess from topic or channel name."""
+
+    def _build_few_shot_examples(self) -> list[types.Content]:
+        examples = [
+            ("Jewish community center in Toronto hosts annual Hanukkah celebration with record attendance",
+             '{"antisemitism_score": 0.1, "sentiment": "Supportive", "ihra_labels": [], "keywords": [], "country_of_origin": null}'),
+            ("Israeli tech startup raises $50M in Series B funding for cybersecurity platform",
+             '{"antisemitism_score": 0.0, "sentiment": "Neutral", "ihra_labels": [], "keywords": [], "country_of_origin": null}'),
+            ("I'm starting to notice who really controls Hollywood and the banks. Just look at the names. Do your own research.",
+             '{"antisemitism_score": 0.45, "sentiment": "Negative", "ihra_labels": ["Stereotypes about Jewish power"], "keywords": ["conspiracy"], "country_of_origin": "United States"}'),
+            ("Israel's settlement expansion violates international law and amounts to apartheid, according to Human Rights Watch report",
+             '{"antisemitism_score": 0.5, "sentiment": "Negative", "ihra_labels": ["Double standards applied to Israel"], "keywords": ["apartheid"], "country_of_origin": "United States"}'),
+            ("The Zionist lobby has purchased every member of Congress. America is ZOG — a Zionist Occupied Government serving its Jewish masters.",
+             '{"antisemitism_score": 0.75, "sentiment": "Negative", "ihra_labels": ["Stereotypes about Jewish power", "Accusations of dual loyalty"], "keywords": ["conspiracy", "ZOG"], "country_of_origin": null}'),
+            ("The Holocaust is the biggest lie in history. 6 million is a fabricated number used to guilt the West into supporting the illegitimate state of Israel.",
+             '{"antisemitism_score": 0.9, "sentiment": "Negative", "ihra_labels": ["Holocaust denial", "Denying Israel\'s right to exist"], "keywords": ["Holocaust denial"], "country_of_origin": null}'),
+            ("Day of the rope is coming for every last one of them. The ovens need to be fired up again.",
+             '{"antisemitism_score": 1.0, "sentiment": "Hostile", "ihra_labels": ["Calls for violence against Jews"], "keywords": ["violence", "genocide"], "country_of_origin": null}'),
+            ("Antisemitic attacks in France rose 300% last year according to government statistics. Jewish schools now require armed guards.",
+             '{"antisemitism_score": 0.55, "sentiment": "Neutral", "ihra_labels": [], "keywords": ["antisemitic attacks"], "country_of_origin": "France"}'),
+            ("French journalist recalls seeing enormous territories destroyed in Gaza during a humanitarian aid mission, the result of intensive Israeli bombardments.",
+             '{"antisemitism_score": 0.45, "sentiment": "Negative", "ihra_labels": [], "keywords": [], "country_of_origin": "France"}'),
+        ]
+        contents = []
+        for user_text, model_response in examples:
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(f"[POST 0]\nText: {user_text}")]))
+            contents.append(types.Content(role="model", parts=[types.Part.from_text(f"[{model_response}]")]))
+        return contents
+
     def analyze_posts(
         self, contexts: list[dict], ihra_labels: list[str], keyword_labels: list[str]
     ) -> list[PostAnalysis]:
         if not contexts:
             return []
 
-        prompt = f"""
-You are an expert hate-speech and geopolitical analyst specializing in antisemitism monitoring.
-Analyze the following batch of social media posts.
-
-Your goal is to identify content that contains hate-speech, antisemitism, or anti-Zionism. General news
-or neutral discussion about Jews, Judaism, or Israel that does NOT contain hateful, hostile, conspiratorial,
-or anti-Zionist content should receive a LOW antisemitism_score.
-
-IMPORTANT — these two fields measure two DIFFERENT things:
-- antisemitism_score measures how much the post contains HATE-SPEECH, ANTISEMITISM, or ANTI-ZIONISM.
-  Posts that merely mention Jews/Israel in a neutral or positive context (e.g. cultural events, tourism,
-  general politics, business news) should score LOW (0.0–0.2). Only posts that express, promote, report on,
-  or respond to antisemitic hate, conspiracy theories, anti-Zionist rhetoric, or violence against Jews should
-  score HIGH. The score does NOT depend on whether the author endorses or condemns the hate — a post reporting
-  on an antisemitic incident and a post celebrating it can both score high, because both contain antisemitic
-  content.
-- sentiment measures the AUTHOR'S OWN OPINION/STANCE — separate from the relevance score.
-
-Scoring guide:
-  0.0–0.2: No hate-speech or antisemitism. General mentions of Jews/Israel, cultural content, neutral news.
-  0.3–0.5: Mild or indirect — dog-whistles, borderline anti-Zionism, ambiguous hostility.
-  0.6–0.8: Clear antisemitic content — tropes, conspiracy theories, dehumanization, explicit anti-Zionism,
-           or reporting/condemning a specific antisemitic incident.
-  0.9–1.0: Extreme — calls for violence, Holocaust denial, explicit hate-speech targeting Jews.
-
-For each post, output a JSON object containing:
-- antisemitism_score: A float from 0.0 to 1.0 as described above. Base your score on the actual semantic
-  content of the text. Do not over-flag merely because of punctuation, formatting (e.g. echo brackets),
-  or author names if the text itself contains no hate-speech or antisemitism.
-- ihra_labels: A list of strings matching ONLY the following allowed IHRA labels:
-{json.dumps(ihra_labels, indent=2)}
-- keywords: A list of strings matching ONLY the following allowed keyword labels:
-{json.dumps(keyword_labels, indent=2)}
-- sentiment: The AUTHOR'S OWN stance/opinion toward Jews/Israel expressed in the text. One of:
-  "Supportive" (pro-Jewish/pro-Israel, or condemning/denouncing antisemitism), "Neutral" (no clear stance,
-  e.g. purely factual news reporting), "Negative" (critical or dismissive of Jews/Israel), "Hostile"
-  (antisemitic, endorses or celebrates violence against Jews, or promotes hateful tropes).
-- country_of_origin: Infer the geographic origin of the post using the provided metadata.
-  1. Phone number (if available) - use the country code.
-  2. Channel/Author Description or Name/Username (if available) - extract the location or primary country of focus.
-  3. Language - if the text is in a country-specific language (e.g. German -> Germany, Farsi -> Iran), use it.
-  4. Context - use slang, local events, or politicians mentioned to guess the country.
-  Return null ONLY if it is impossible to infer the country.
-
-Here are the posts to analyze:
-"""
+        prompt = "Analyze these posts:\n"
         for i, ctx in enumerate(contexts):
             prompt += f"\n[POST {i}]\nText: {ctx['text']}\n"
             if ctx.get("author_phone"):
@@ -92,11 +103,15 @@ Here are the posts to analyze:
             if ctx.get("channel_description"):
                 prompt += f"Channel Description: {ctx['channel_description']}\n"
 
+        few_shot = self._build_few_shot_examples()
+        few_shot.append(types.Content(role="user", parts=[types.Part.from_text(prompt)]))
+
         try:
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=prompt,
+                contents=few_shot,
                 config=types.GenerateContentConfig(
+                    system_instruction=self._build_system_instruction(ihra_labels, keyword_labels),
                     response_mime_type="application/json",
                     response_schema=list[PostAnalysis],
                     temperature=0.0,
