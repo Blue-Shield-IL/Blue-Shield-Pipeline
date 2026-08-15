@@ -26,54 +26,55 @@ class GeminiAdapter:
         as_type="generation", name="gemini-analyze-posts", capture_input=False, capture_output=False
     )
     def _build_system_instruction(self, ihra_labels: list[str], keyword_labels: list[str]) -> str:
-        return f"""You are an expert hate-speech and geopolitical analyst specializing in antisemitism monitoring.
+        return f"""You are an antisemitism monitoring analyst. Analyze posts for antisemitism relevance.
 
-antisemitism_score and sentiment measure DIFFERENT things:
-- antisemitism_score: relevance to hate-speech, antisemitism, or anti-Zionism (0.0–1.0). Score based on content, not author stance.
-- sentiment: the AUTHOR'S OWN stance toward Jews/Israel.
+RULES (follow strictly):
 
-Scoring guide:
-  0.0–0.2: No antisemitism. General mentions of Jews/Israel, cultural content, neutral news.
-  0.3–0.4: Mild — dog-whistles, coded language, ambiguous hostility.
-  0.5–0.6: Anti-Zionist or critical — one-sided framing against Israel, critical war reporting, delegitimization, reporting on antisemitic incidents.
-  0.7–0.8: Clear antisemitic content — tropes, conspiracy theories, dehumanization, anti-Zionism with hateful rhetoric.
-  0.9–1.0: Extreme — calls for violence, Holocaust denial, explicit hate-speech targeting Jews.
+R1-SCORE: antisemitism_score = relevance to antisemitism/anti-Zionism (0.0–1.0), based on CONTENT, not author intent.
+  0.0–0.2: No relevance. Cultural, tech, neutral news about Jews/Israel.
+  0.3–0.4: Mild. Dog-whistles, coded language, ambiguous.
+  0.5–0.6: Relevant. Anti-Zionist framing, delegitimization, reporting on antisemitic incidents.
+  0.7–0.8: High. Tropes, conspiracy theories, dehumanization, glorifying armed resistance against Israel.
+  0.9–1.0: Extreme. Calls for violence, Holocaust denial, explicit hate-speech.
 
-Output fields:
-- antisemitism_score: float 0.0–1.0. Do not over-flag based on punctuation, formatting, or author names alone.
-- ihra_labels: list from ONLY: {json.dumps(ihra_labels)}
-- keywords: list from ONLY: {json.dumps(keyword_labels)}
-- sentiment: one of:
-  "Supportive" — pro-Jewish/pro-Israel, condemning antisemitism.
-  "Neutral" — no stance, factual reporting.
-  "Negative" — critical, conspiracy theories, tropes, delegitimization, inflammatory rhetoric.
-  "Hostile" — ONLY explicit calls for violence, direct threats, endorsing genocide. Should be rare.
-- country_of_origin: where the antisemitism/anti-Zionism originates from.
-  1. If author nationality/location is stated in text, use that country.
-  2. If antisemitic activity happens in a specific place, use that country.
-  3. Use metadata (phone code, channel location) as supporting signals.
-  Return null if no clear geographic link — do NOT guess from topic or channel name."""
+R2-SENTIMENT: the author's stance toward Jews/Israel. Choose one:
+  "Supportive" = defends Jews/Israel, condemns antisemitism.
+  "Neutral" = factual, no stance.
+  "Negative" = critical, hostile rhetoric, tropes, delegitimization, celebrating anti-Israel violence.
+  "Hostile" = ONLY explicit calls for violence/genocide. Rare.
+
+R3-DECISION RULES (override general scoring when they apply):
+  - Celebratory tone toward anti-Israel armed groups (Hezbollah, Hamas, etc.) or "resistance" = Negative sentiment, score >= 0.6. NEVER Supportive.
+  - "Zionist enemy", "Zionist entity", "Zionist project" = delegitimization, score >= 0.6.
+  - Coded references to Jews ("them", "those people", "the tribe", "goyim") with negative context = score >= 0.5.
+  - Comparing Israeli leaders to Nazis/terrorists or vice versa = score >= 0.5, Negative.
+  - Reporting on antisemitic incidents (attacks, vandalism, hate crimes) = score 0.5–0.6, Neutral sentiment.
+  - Conspiracy framing ("Israel played the X card", "Jewish lobby controls") = score >= 0.6.
+  - Post mentions Jews/Israel only in passing with no antisemitic content = score 0.0–0.2.
+  - Do NOT lower score just because tone is calm, academic, or celebratory.
+  - Do NOT raise score based on punctuation, formatting, or author names alone.
+
+R4-COUNTRY: where the antisemitism/anti-Zionism originates from, NOT the topic country.
+  1. Antisemitic/Anti-Zionist Author nationality/location stated in text → that country.
+  2. Antisemitic activity happens in a specific place → that country.
+  3. Metadata (phone code, channel location) as weak signal.
+  null if unclear. Never guess from topic alone.
+
+OUTPUT: ihra_labels from ONLY: {json.dumps(ihra_labels)}
+keywords from ONLY: {json.dumps(keyword_labels)}"""
 
     def _build_few_shot_examples(self) -> list[types.Content]:
         examples = [
             ("Jewish community center in Toronto hosts annual Hanukkah celebration with record attendance",
              '{"antisemitism_score": 0.1, "sentiment": "Supportive", "ihra_labels": [], "keywords": [], "country_of_origin": null}'),
-            ("Israeli tech startup raises $50M in Series B funding for cybersecurity platform",
-             '{"antisemitism_score": 0.0, "sentiment": "Neutral", "ihra_labels": [], "keywords": [], "country_of_origin": null}'),
             ("I'm starting to notice who really controls Hollywood and the banks. Just look at the names. Do your own research.",
              '{"antisemitism_score": 0.45, "sentiment": "Negative", "ihra_labels": ["Stereotypes about Jewish power"], "keywords": ["conspiracy"], "country_of_origin": "United States"}'),
-            ("Israel's settlement expansion violates international law and amounts to apartheid, according to Human Rights Watch report",
-             '{"antisemitism_score": 0.5, "sentiment": "Negative", "ihra_labels": ["Double standards applied to Israel"], "keywords": ["apartheid"], "country_of_origin": "United States"}'),
-            ("The Zionist lobby has purchased every member of Congress. America is ZOG — a Zionist Occupied Government serving its Jewish masters.",
-             '{"antisemitism_score": 0.75, "sentiment": "Negative", "ihra_labels": ["Stereotypes about Jewish power", "Accusations of dual loyalty"], "keywords": ["conspiracy", "ZOG"], "country_of_origin": null}'),
-            ("The Holocaust is the biggest lie in history. 6 million is a fabricated number used to guilt the West into supporting the illegitimate state of Israel.",
-             '{"antisemitism_score": 0.9, "sentiment": "Negative", "ihra_labels": ["Holocaust denial", "Denying Israel\'s right to exist"], "keywords": ["Holocaust denial"], "country_of_origin": null}'),
-            ("Day of the rope is coming for every last one of them. The ovens need to be fired up again.",
-             '{"antisemitism_score": 1.0, "sentiment": "Hostile", "ihra_labels": ["Calls for violence against Jews"], "keywords": ["violence", "genocide"], "country_of_origin": null}'),
-            ("Antisemitic attacks in France rose 300% last year according to government statistics. Jewish schools now require armed guards.",
-             '{"antisemitism_score": 0.55, "sentiment": "Neutral", "ihra_labels": [], "keywords": ["antisemitic attacks"], "country_of_origin": "France"}'),
-            ("French journalist recalls seeing enormous territories destroyed in Gaza during a humanitarian aid mission, the result of intensive Israeli bombardments.",
-             '{"antisemitism_score": 0.45, "sentiment": "Negative", "ihra_labels": [], "keywords": [], "country_of_origin": "France"}'),
+            ("A rabbi was attacked outside a synagogue in Reykjavik. Police are investigating it as a hate crime.",
+             '{"antisemitism_score": 0.55, "sentiment": "Neutral", "ihra_labels": [], "keywords": ["antisemitic attacks"], "country_of_origin": "Iceland"}'),
+            ("We congratulate the heroic resistance on its glorious victory against the Zionist enemy entity. The Zionist project will be defeated.",
+             '{"antisemitism_score": 0.7, "sentiment": "Negative", "ihra_labels": ["Denying Israel\'s right to exist"], "keywords": ["anti-Zionism"], "country_of_origin": null}'),
+            ("The Holocaust is the biggest lie in history. 6 million is a fabricated number used to guilt the West.",
+             '{"antisemitism_score": 0.9, "sentiment": "Negative", "ihra_labels": ["Holocaust denial"], "keywords": ["Holocaust denial"], "country_of_origin": null}'),
         ]
         contents = []
         for user_text, model_response in examples:
