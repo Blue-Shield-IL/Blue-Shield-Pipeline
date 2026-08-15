@@ -60,8 +60,7 @@ R3-DECISION RULES (override general scoring when they apply):
 
 R4-COUNTRY: where the antisemitism/anti-Zionism originates from. NOT the country being discussed or criticized.
   1. Author nationality/location explicitly stated in text → that country.
-  2. Anti-Zionist or antisemitic activity happens in a named place (e.g. attack in Iraq, strike in Kurdistan, antisemitic incident in France) → that country.
-  3. Metadata (phone code, channel location) as weak signal only.
+  2. A specific antisemitic incident happens in a named place (e.g. attack on synagogue in France) → that country.  3. Metadata (phone code, channel location) as weak signal only.
   null in ALL other cases. Do not confuse the country being discussed with the country of origin. Countries merely mentioned or criticized in the post are NOT automatically the origin.
   NEVER use "Palestine", "Gaza", or "West Bank" as country_of_origin — use "Israel" or null instead.
 
