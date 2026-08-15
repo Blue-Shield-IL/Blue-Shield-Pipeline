@@ -44,8 +44,7 @@ R2-SENTIMENT: the author's stance toward Jews/Israel. Choose one:
   "Hostile" = ONLY explicit calls for violence/genocide. Rare.
 
 R3-DECISION RULES (override general scoring when they apply):
-  - Celebratory tone toward anti-Israel armed groups (Hezbollah, Hamas, etc.) or "resistance" = Negative sentiment, score >= 0.7. NEVER Supportive.
-  - Celebrating violence against Israel-linked or US-Israeli targets ("beautiful strike", "direct hit") = score >= 0.7, Negative.
+  - Celebratory tone toward anti-Israel armed groups (Hezbollah, Hamas, etc.) or "resistance" = Negative sentiment, score >= 0.6. NEVER Supportive.
   - "Zionist enemy", "Zionist entity", "Zionist project", "occupation forces", "Israeli enemy" = delegitimization, score >= 0.5, Negative.
   - War reporting with loaded terms ("massacre", "martyrs", "genocide", "terrorist Israel") = score >= 0.5, Negative. These are NOT neutral.
   - Showing civilian casualties with anti-Israel framing (dead children, destroyed homes) = score >= 0.5, Negative.
@@ -60,10 +59,9 @@ R3-DECISION RULES (override general scoring when they apply):
 
 R4-COUNTRY: where the antisemitism/anti-Zionism originates from. NOT the country being discussed or criticized.
   1. Author nationality/location explicitly stated in text → that country.
-  2. Anti-Zionist or antisemitic activity happens in a named place (e.g. attack in Iraq, strike in Kurdistan, antisemitic incident in France) → that country.
+  2. A specific antisemitic incident happens in a named place (e.g. attack on synagogue in France) → that country.
   3. Metadata (phone code, channel location) as weak signal only.
   null in ALL other cases. Do not confuse the country being discussed with the country of origin. Countries merely mentioned or criticized in the post are NOT automatically the origin.
-  NEVER use "Palestine", "Gaza", or "West Bank" as country_of_origin — use "Israel" or null instead.
 
 OUTPUT: ihra_labels from ONLY: {json.dumps(ihra_labels)}
 keywords from ONLY: {json.dumps(keyword_labels)}"""
