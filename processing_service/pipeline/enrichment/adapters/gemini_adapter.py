@@ -77,8 +77,8 @@ Output fields:
         ]
         contents = []
         for user_text, model_response in examples:
-            contents.append(types.Content(role="user", parts=[types.Part.from_text(f"[POST 0]\nText: {user_text}")]))
-            contents.append(types.Content(role="model", parts=[types.Part.from_text(f"[{model_response}]")]))
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=f"[POST 0]\nText: {user_text}")]))
+            contents.append(types.Content(role="model", parts=[types.Part.from_text(text=f"[{model_response}]")]))
         return contents
 
     def analyze_posts(
@@ -104,7 +104,7 @@ Output fields:
                 prompt += f"Channel Description: {ctx['channel_description']}\n"
 
         few_shot = self._build_few_shot_examples()
-        few_shot.append(types.Content(role="user", parts=[types.Part.from_text(prompt)]))
+        few_shot.append(types.Content(role="user", parts=[types.Part.from_text(text=prompt)]))
 
         try:
             response = self.client.models.generate_content(
